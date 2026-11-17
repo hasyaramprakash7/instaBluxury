@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Avatar } from "./FeedView";
-import { IconHeart, IconComment, IconReels, IconBookmark, IconGrid, IconTrash } from "./Icons";
+import { IconHeart, IconComment, IconReels, IconBookmark, IconGrid } from "./Icons";
 
 export default function ProfileView({
   api,
@@ -10,8 +10,6 @@ export default function ProfileView({
   refreshTrigger,
   requireAuth,
   onLike,
-  onDeletePost,
-  onDeleteAccount,
   onFollow,
   onOpenChat,
   onMeUpdated,
@@ -19,7 +17,7 @@ export default function ProfileView({
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [saved, setSaved] = useState([]);
-  const [tab, setTab] = useState("all");
+  const [tab, setTab] = useState("all"); // 'all', 'posts', 'reels', 'saved'
   const [selectedItem, setSelectedItem] = useState(null);
   const [editing, setEditing] = useState(false);
   const [bio, setBio] = useState("");
@@ -90,30 +88,19 @@ export default function ProfileView({
       ? posts.filter((p) => p.type === "reel")
       : saved;
 
-  const activeModalItem = selectedItem
-    ? posts.find((p) => p.id === selectedItem.id) || saved.find((p) => p.id === selectedItem.id) || null
-    : null;
+  const activeModalItem = selectedItem ? posts.find((p) => p.id === selectedItem.id) || saved.find((p) => p.id === selectedItem.id) || selectedItem : null;
 
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: 920, margin: "0 auto", padding: "28px 16px" }}>
       <div className="prof-hd">
-        <Avatar url={profile.avatar_url} name={profile.username} size={96} ring />
+        <Avatar url={profile.avatar_url} name={profile.username} size={110} ring />
         <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "center", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
             <h2 style={{ margin: 0, fontWeight: 400 }}>
               {profile.username} {profile.verified ? <span className="badge-v">✓</span> : null}
             </h2>
             {isMe ? (
-              <>
-                <button className="btn-sec" onClick={() => setEditing(!editing)}>Edit profile</button>
-                <button
-                  className="btn-sec"
-                  style={{ color: "#c0392b", background: "#ffebe8" }}
-                  onClick={onDeleteAccount}
-                >
-                  Delete account
-                </button>
-              </>
+              <button className="btn-sec" onClick={() => setEditing(!editing)}>Edit profile</button>
             ) : (
               <>
                 <button
@@ -128,8 +115,8 @@ export default function ProfileView({
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 24, justifyContent: "center", marginBottom: 12, fontSize: 14.5 }}>
-            <span><b>{posts.length}</b> posts</span>
+          <div style={{ display: "flex", gap: 28, marginBottom: 12, fontSize: 15 }}>
+            <span><b>{posts.length}</b> posts &amp; reels</span>
             <span><b>{profile.followers_count}</b> followers</span>
             <span><b>{profile.following_count}</b> following</span>
           </div>
@@ -202,22 +189,7 @@ export default function ProfileView({
             <div className="exp-m-side">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: "1px solid #efefef" }}>
                 <b>{profile.username}</b>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {isMe && (
-                    <button
-                      className="btn-del"
-                      title="Delete permanently from Cloudflare R2 & SQL"
-                      onClick={async () => {
-                        await onDeletePost(activeModalItem.id);
-                        setSelectedItem(null);
-                        load();
-                      }}
-                    >
-                      <IconTrash />
-                    </button>
-                  )}
-                  <button style={{ border: 0, background: "none", fontSize: 18, cursor: "pointer" }} onClick={() => setSelectedItem(null)}>✕</button>
-                </div>
+                <button style={{ border: 0, background: "none", fontSize: 18, cursor: "pointer" }} onClick={() => setSelectedItem(null)}>✕</button>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
                 <p><b>{profile.username}</b> {activeModalItem.caption}</p>
