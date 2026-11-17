@@ -193,24 +193,33 @@ function FeedVideoPlayer({ src, isActive, muted, onToggleMute }) {
     if (!v) return;
     if (isActive) {
       v.muted = muted;
-      v.play().catch(() => {
-        v.muted = true;
-        v.play().catch(() => {});
-      });
+      const playPromise = v.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          v.muted = true;
+          v.play().catch(() => {});
+        });
+      }
     } else {
       v.pause();
     }
-  }, [isActive, muted]);
+  }, [isActive, muted, src]);
 
   return (
-    <div style={{ position: "relative", width: "100%", display: "grid", placeItems: "center" }}>
+    <div style={{ position: "relative", width: "100%", minHeight: 240, display: "grid", placeItems: "center", background: "#000" }}>
       <video
         ref={vRef}
         src={src}
         playsInline
         loop
         muted={muted}
+        preload="metadata"
         className="media-el"
+        onLoadedData={() => {
+          if (isActive && vRef.current && vRef.current.paused) {
+            vRef.current.play().catch(() => {});
+          }
+        }}
         onClick={onToggleMute}
       />
       <button
@@ -249,18 +258,42 @@ export default function FeedView({
   const [activeVideoPostId, setActiveVideoPostId] = useState(null);
   const [feedMuted, setFeedMuted] = useState(true);
   const postRefs = useRef({});
+  const visibilityMap = useRef({});
+
+  // Immediately activate the first video post on mount or when returning from Reels/other tabs
+  useEffect(() => {
+    const videoPosts = posts.filter((p) => p.media_type === "video");
+    if (videoPosts.length > 0 && (!activeVideoPostId || !videoPosts.some((p) => p.id === activeVideoPostId))) {
+      setActiveVideoPostId(videoPosts[0].id);
+    }
+  }, [posts, activeVideoPostId]);
 
   useEffect(() => {
+    visibilityMap.current = {};
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-            const id = entry.target.getAttribute("data-post-id");
-            if (id) setActiveVideoPostId(id);
+          const id = entry.target.getAttribute("data-post-id");
+          if (!id) continue;
+          if (entry.isIntersecting) {
+            visibilityMap.current[id] = entry.intersectionRatio;
+          } else {
+            delete visibilityMap.current[id];
           }
         }
+
+        // Pick whichever video post currently has the highest visible percentage on screen
+        let bestId = null;
+        let bestRatio = 0.1;
+        for (const [id, ratio] of Object.entries(visibilityMap.current)) {
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestId = id;
+          }
+        }
+        if (bestId) setActiveVideoPostId(bestId);
       },
-      { threshold: [0.6] }
+      { threshold: [0.15, 0.35, 0.6, 0.85] }
     );
 
     Object.values(postRefs.current).forEach((el) => {
@@ -323,8 +356,10 @@ export default function FeedView({
               <article
                 className="post-card"
                 key={p.id}
-                data-post-id={p.id}
-                ref={(el) => { postRefs.current[p.id] = el; }}
+                data-post-id={p.media_type === "video" ? p.id : undefined}
+                ref={(el) => {
+                  if (p.media_type === "video") postRefs.current[p.id] = el;
+                }}
               >
                 <header className="post-hd">
                   <div className="post-user" onClick={() => onOpenProfile(p.user_id)}>
