@@ -90,15 +90,16 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
 .sug-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .btn-link{background:none;border:0;color:#0095f6;font-weight:600;font-size:12px;cursor:pointer}
 
-/* Reels */
-.reels-container{max-width:410px;margin:16px auto;display:flex;flex-direction:column;gap:22px;padding:0 10px}
-.reel-card{position:relative;height:80dvh;min-height:500px;background:#000;border-radius:12px;overflow:hidden;color:#fff}
-.reel-media{width:100%;height:100%;object-fit:cover;cursor:pointer}
+/* Reels - Strictly One Full-Screen Card Per Screen */
+.reels-container{max-width:440px;margin:0 auto;padding:0;gap:0;height:100dvh;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;background:#000}
+.reels-container::-webkit-scrollbar{display:none}
+.reel-card{position:relative;width:100%;height:100dvh;min-height:100dvh;max-height:100dvh;flex:0 0 100dvh;scroll-snap-align:start;scroll-snap-stop:always;background:#000;border-radius:0;overflow:hidden;color:#fff;display:flex;align-items:center;justify-content:center}
+.reel-media{width:100%;height:100%;object-fit:contain;cursor:pointer;display:block;background:#000}
 .mute-btn{position:absolute;top:14px;right:14px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:50%;width:36px;height:36px;cursor:pointer;display:grid;place-items:center;z-index:5}
-.reel-info{position:absolute;left:14px;bottom:18px;right:64px;text-shadow:0 1px 4px rgba(0,0,0,.8)}
+.reel-info{position:absolute;left:14px;bottom:22px;right:68px;text-shadow:0 1px 4px rgba(0,0,0,.85)}
 .reel-follow{background:transparent;border:1px solid #fff;color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer}
 .reel-cap{margin:0 0 4px;font-size:13.5px}
-.reel-rail{position:absolute;right:12px;bottom:22px;display:flex;flex-direction:column;gap:16px}
+.reel-rail{position:absolute;right:12px;bottom:26px;display:flex;flex-direction:column;gap:18px}
 .reel-rail button{background:none;border:0;color:#fff;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;text-shadow:0 1px 4px rgba(0,0,0,.7)}
 .reel-drawer{position:absolute;left:0;right:0;bottom:0;height:58%;background:#fff;color:#000;border-radius:14px 14px 0 0;padding:14px;display:flex;flex-direction:column;z-index:10}
 
@@ -182,9 +183,9 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
   .stories-bar{background:#fff;margin-bottom:0;padding:10px 12px;width:100%}
   .post-card{border-left:0;border-right:0;border-radius:0;margin-bottom:8px;width:100%}
 
-  /* Full-screen snap reels on mobile */
+  /* Full-screen single-block snap reels on mobile */
   .reels-container{max-width:100%;width:100%;margin:0;padding:0;gap:0;height:calc(100dvh - 100px);overflow-y:scroll;scroll-snap-type:y mandatory}
-  .reel-card{height:calc(100dvh - 100px);min-height:0;border-radius:0;scroll-snap-align:start;width:100%}
+  .reel-card{height:calc(100dvh - 100px);min-height:calc(100dvh - 100px);max-height:calc(100dvh - 100px);flex:0 0 calc(100dvh - 100px);border-radius:0;scroll-snap-align:start;scroll-snap-stop:always;width:100%}
 
   /* Mobile two-screen DM inbox vs chat */
   .chat-shell{grid-template-columns:1fr;height:calc(100dvh - 100px);margin:0;border:0;border-radius:0;width:100%}
