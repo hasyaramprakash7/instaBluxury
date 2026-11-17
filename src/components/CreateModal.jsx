@@ -7,6 +7,8 @@ export default function CreateModal({ api, token, defaultType = "post", onClose,
   const [preview, setPreview] = useState(null);
   const [caption, setCaption] = useState("");
   const [location, setLocation] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("Visit Link");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -23,10 +25,20 @@ export default function CreateModal({ api, token, defaultType = "post", onClose,
     setBusy(true);
     setErr("");
     try {
+      const cleanUrl = linkUrl.trim()
+        ? /^https?:\/\//i.test(linkUrl.trim())
+          ? linkUrl.trim()
+          : `https://${linkUrl.trim()}`
+        : "";
+      const cleanLabel = (linkLabel.trim() || "Visit Link").replace(/\|/g, "-");
+      const finalCaption = cleanUrl
+        ? `${caption.trim()}\n[[LINK|${cleanLabel}|${cleanUrl}]]`.trim()
+        : caption.trim();
+
       const fd = new FormData();
       fd.append("file", file);
       fd.append("type", type);
-      fd.append("caption", caption);
+      fd.append("caption", finalCaption);
       fd.append("location", location);
 
       const res = await fetch(`${api}/api/posts`, {
@@ -101,6 +113,28 @@ export default function CreateModal({ api, token, defaultType = "post", onClose,
               className="c-input"
             />
           )}
+
+          <div style={{ background: "#fafafa", border: "1px solid #efefef", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#737373", marginBottom: 6 }}>
+              Attach Link (optional)
+            </div>
+            <input
+              placeholder="https://example.com"
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              className="c-input"
+              style={{ marginBottom: linkUrl.trim() ? 8 : 0 }}
+            />
+            {linkUrl.trim() && (
+              <input
+                placeholder="Button label (e.g. Shop Now, Learn More)"
+                value={linkLabel}
+                onChange={(e) => setLinkLabel(e.target.value)}
+                className="c-input"
+                style={{ marginBottom: 0 }}
+              />
+            )}
+          </div>
 
           <button className="btn-primary" disabled={busy || !file}>
             {busy ? "Uploading to Cloudflare R2..." : `Share ${type.charAt(0).toUpperCase() + type.slice(1)}`}

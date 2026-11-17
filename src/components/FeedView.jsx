@@ -25,6 +25,16 @@ export const timeAgo = (ts) => {
   return `${Math.floor(s / 86400)}d`;
 };
 
+export function parseCaptionLink(raw = "") {
+  const str = String(raw || "");
+  const match = str.match(/\[\[LINK\|([^|\]]+)\|([^\]]+)\]\]/);
+  if (!match) return { text: str, link: null };
+  return {
+    text: str.replace(match[0], "").trim(),
+    link: { label: match[1], url: match[2] },
+  };
+}
+
 function FeedVideoPlayer({ src, isActive, muted, onToggleMute }) {
   const vRef = useRef(null);
 
@@ -127,6 +137,8 @@ export default function FeedView({
     });
   };
 
+  const storyParsed = activeStory ? parseCaptionLink(activeStory.caption) : null;
+
   return (
     <div className="feed-layout">
       <div className="feed-main">
@@ -154,112 +166,144 @@ export default function FeedView({
             <p style={{ color: "#737373" }}>No posts yet. Click <b>Create</b> to share the first photo or reel!</p>
           </div>
         ) : (
-          posts.map((p) => (
-            <article
-              className="post-card"
-              key={p.id}
-              data-post-id={p.id}
-              ref={(el) => { postRefs.current[p.id] = el; }}
-            >
-              <header className="post-hd">
-                <div className="post-user" onClick={() => onOpenProfile(p.user_id)}>
-                  <Avatar url={p.avatar_url} name={p.username} size={36} ring />
-                  <div>
-                    <div className="uname">
-                      {p.username} {p.verified ? <span className="badge-v">✓</span> : null}
-                      <span className="dot"> • {timeAgo(p.created)}</span>
-                    </div>
-                    {p.location && <div className="loc">{p.location}</div>}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  {(!me || p.user_id !== me.id) && (
-                    <button
-                      className={"btn-follow" + (p.following ? " on" : "")}
-                      onClick={() => requireAuth(() => onFollow(p.user_id))}
-                    >
-                      {p.following ? "Following" : "Follow"}
-                    </button>
-                  )}
-                  {me && p.user_id === me.id && (
-                    <button className="btn-del" title="Delete permanently from Cloudflare R2 & SQL" onClick={() => onDeletePost(p.id)}>
-                      <IconTrash />
-                    </button>
-                  )}
-                </div>
-              </header>
-
-              <div className="post-media" onDoubleClick={() => handleDoubleTap(p)}>
-                {p.media_type === "video" ? (
-                  <FeedVideoPlayer
-                    src={p.media_url}
-                    isActive={activeVideoPostId === p.id}
-                    muted={feedMuted}
-                    onToggleMute={() => setFeedMuted((m) => !m)}
-                  />
-                ) : (
-                  <img src={p.media_url} alt={p.caption} className="media-el" loading="lazy" />
-                )}
-                {heartAnim === p.id && (
-                  <div className="big-heart"><IconHeart filled size={84} /></div>
-                )}
-                {p.type === "reel" && (
-                  <span className="reel-pill" style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <IconReels /> Reel
-                  </span>
-                )}
-              </div>
-
-              <div className="post-actions">
-                <div className="act-left">
-                  <button className="ic-btn" onClick={() => requireAuth(() => onLike(p.id))}>
-                    <IconHeart filled={p.liked} />
-                  </button>
-                  <button className="ic-btn" onClick={() => requireAuth(() => document.getElementById(`c_${p.id}`)?.focus())}>
-                    <IconComment />
-                  </button>
-                  {(!me || p.user_id !== me.id) && (
-                    <button className="ic-btn" title="Send Direct Message" onClick={() => requireAuth(() => onOpenChat(p.user_id))}>
-                      <IconShare />
-                    </button>
-                  )}
-                </div>
-                <button className="ic-btn" onClick={() => requireAuth(() => onSave(p.id))}>
-                  <IconBookmark filled={p.saved} />
-                </button>
-              </div>
-
-              <div className="post-body">
-                <div className="likes-cnt">{p.like_count} {p.like_count === 1 ? "like" : "likes"}</div>
-                {p.caption && (
-                  <div className="caption">
-                    <b className="uname" onClick={() => onOpenProfile(p.user_id)}>{p.username}</b> {p.caption}
-                  </div>
-                )}
-
-                {p.comments.length > 0 && (
-                  <div className="comments-list">
-                    {p.comments.slice(-3).map((c) => (
-                      <div key={c.id} className="comment-row">
-                        <b>{c.username}</b> {c.text}
+          posts.map((p) => {
+            const { text: cleanCaption, link: postLink } = parseCaptionLink(p.caption);
+            return (
+              <article
+                className="post-card"
+                key={p.id}
+                data-post-id={p.id}
+                ref={(el) => { postRefs.current[p.id] = el; }}
+              >
+                <header className="post-hd">
+                  <div className="post-user" onClick={() => onOpenProfile(p.user_id)}>
+                    <Avatar url={p.avatar_url} name={p.username} size={36} ring />
+                    <div>
+                      <div className="uname">
+                        {p.username} {p.verified ? <span className="badge-v">✓</span> : null}
+                        <span className="dot"> • {timeAgo(p.created)}</span>
                       </div>
-                    ))}
+                      {p.location && <div className="loc">{p.location}</div>}
+                    </div>
                   </div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    {(!me || p.user_id !== me.id) && (
+                      <button
+                        className={"btn-follow" + (p.following ? " on" : "")}
+                        onClick={() => requireAuth(() => onFollow(p.user_id))}
+                      >
+                        {p.following ? "Following" : "Follow"}
+                      </button>
+                    )}
+                    {me && p.user_id === me.id && (
+                      <button className="btn-del" title="Delete permanently from Cloudflare R2 & SQL" onClick={() => onDeletePost(p.id)}>
+                        <IconTrash />
+                      </button>
+                    )}
+                  </div>
+                </header>
+
+                <div className="post-media" onDoubleClick={() => handleDoubleTap(p)}>
+                  {p.media_type === "video" ? (
+                    <FeedVideoPlayer
+                      src={p.media_url}
+                      isActive={activeVideoPostId === p.id}
+                      muted={feedMuted}
+                      onToggleMute={() => setFeedMuted((m) => !m)}
+                    />
+                  ) : (
+                    <img src={p.media_url} alt={cleanCaption} className="media-el" loading="lazy" />
+                  )}
+                  {heartAnim === p.id && (
+                    <div className="big-heart"><IconHeart filled size={84} /></div>
+                  )}
+                  {p.type === "reel" && (
+                    <span className="reel-pill" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <IconReels /> Reel
+                    </span>
+                  )}
+                </div>
+
+                {/* CLICKABLE LINK BANNER DIRECTLY BELOW MEDIA */}
+                {postLink && (
+                  <a
+                    href={postLink.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 14px",
+                      background: "#f0f8ff",
+                      borderBottom: "1px solid #dbdbdb",
+                      color: "#0077cc",
+                      textDecoration: "none",
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      🔗 {postLink.label}
+                      <span style={{ fontWeight: 400, color: "#737373", fontSize: 12, marginLeft: 6 }}>
+                        ({postLink.url.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0]})
+                      </span>
+                    </span>
+                    <span style={{ flex: "none", marginLeft: 8 }}>↗</span>
+                  </a>
                 )}
 
-                <form className="comment-form" onSubmit={(e) => submitComment(e, p.id)}>
-                  <input
-                    id={`c_${p.id}`}
-                    placeholder={me ? "Add a comment..." : "Log in to comment..."}
-                    value={commentInputs[p.id] || ""}
-                    onFocus={() => { if (!me) onOpenAuth(); }}
-                    onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
-                  />
-                  {(commentInputs[p.id] || "").trim() && <button type="submit">Post</button>}
-                </form>
-              </div>
-            </article>
-          ))
+                <div className="post-actions">
+                  <div className="act-left">
+                    <button className="ic-btn" onClick={() => requireAuth(() => onLike(p.id))}>
+                      <IconHeart filled={p.liked} />
+                    </button>
+                    <button className="ic-btn" onClick={() => requireAuth(() => document.getElementById(`c_${p.id}`)?.focus())}>
+                      <IconComment />
+                    </button>
+                    {(!me || p.user_id !== me.id) && (
+                      <button className="ic-btn" title="Send Direct Message" onClick={() => requireAuth(() => onOpenChat(p.user_id))}>
+                        <IconShare />
+                      </button>
+                    )}
+                  </div>
+                  <button className="ic-btn" onClick={() => requireAuth(() => onSave(p.id))}>
+                    <IconBookmark filled={p.saved} />
+                  </button>
+                </div>
+
+                <div className="post-body">
+                  <div className="likes-cnt">{p.like_count} {p.like_count === 1 ? "like" : "likes"}</div>
+                  {cleanCaption && (
+                    <div className="caption">
+                      <b className="uname" onClick={() => onOpenProfile(p.user_id)}>{p.username}</b> {cleanCaption}
+                    </div>
+                  )}
+
+                  {p.comments.length > 0 && (
+                    <div className="comments-list">
+                      {p.comments.slice(-3).map((c) => (
+                        <div key={c.id} className="comment-row">
+                          <b>{c.username}</b> {c.text}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <form className="comment-form" onSubmit={(e) => submitComment(e, p.id)}>
+                    <input
+                      id={`c_${p.id}`}
+                      placeholder={me ? "Add a comment..." : "Log in to comment..."}
+                      value={commentInputs[p.id] || ""}
+                      onFocus={() => { if (!me) onOpenAuth(); }}
+                      onChange={(e) => setCommentInputs({ ...commentInputs, [p.id]: e.target.value })}
+                    />
+                    {(commentInputs[p.id] || "").trim() && <button type="submit">Post</button>}
+                  </form>
+                </div>
+              </article>
+            );
+          })
         )}
       </div>
 
@@ -323,7 +367,31 @@ export default function FeedView({
             ) : (
               <img src={activeStory.media_url} alt="" className="story-media" />
             )}
-            {activeStory.caption && <div className="story-cap">{activeStory.caption}</div>}
+            {(storyParsed?.text || storyParsed?.link) && (
+              <div className="story-cap">
+                {storyParsed.text && <div>{storyParsed.text}</div>}
+                {storyParsed.link && (
+                  <a
+                    href={storyParsed.link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "inline-block",
+                      marginTop: storyParsed.text ? 8 : 0,
+                      background: "#fff",
+                      color: "#000",
+                      padding: "6px 12px",
+                      borderRadius: 16,
+                      fontWeight: 600,
+                      fontSize: 12.5,
+                      textDecoration: "none",
+                    }}
+                  >
+                    🔗 {storyParsed.link.label} ↗
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

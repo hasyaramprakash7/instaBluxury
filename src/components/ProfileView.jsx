@@ -25,6 +25,13 @@ function serializeBioAndLinks(cleanBio, links) {
   return [cleanBio.trim(), ...validLinks].filter(Boolean).join("\n");
 }
 
+const IconGear = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
 export default function ProfileView({
   api,
   token,
@@ -46,6 +53,7 @@ export default function ProfileView({
   const [selectedItem, setSelectedItem] = useState(null);
 
   const [editing, setEditing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [bio, setBio] = useState("");
   const [links, setLinks] = useState([""]);
@@ -146,18 +154,63 @@ export default function ProfileView({
               {profile.username} {profile.verified ? <span className="badge-v">✓</span> : null}
             </h2>
             {isMe ? (
-              <>
+              <div style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <button className="btn-sec" onClick={() => setEditing(!editing)}>
                   {editing ? "Cancel" : "Edit profile"}
                 </button>
                 <button
-                  className="btn-sec"
-                  style={{ color: "#c0392b", background: "#ffebe8" }}
-                  onClick={onDeleteAccount}
+                  type="button"
+                  className="ic-btn"
+                  style={{ padding: 6 }}
+                  aria-label="Account settings"
+                  title="Account settings"
+                  onClick={() => setSettingsOpen((o) => !o)}
                 >
-                  Delete account
+                  <IconGear />
                 </button>
-              </>
+
+                {settingsOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "115%",
+                      right: 0,
+                      background: "#fff",
+                      border: "1px solid #dbdbdb",
+                      borderRadius: 10,
+                      boxShadow: "0 6px 20px rgba(0,0,0,0.12)",
+                      padding: 6,
+                      minWidth: 190,
+                      zIndex: 40,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettingsOpen(false);
+                        onDeleteAccount();
+                      }}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "9px 12px",
+                        border: 0,
+                        background: "transparent",
+                        color: "#c0392b",
+                        fontWeight: 600,
+                        fontSize: 13.5,
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <IconTrash /> Delete account
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <>
                 <button
