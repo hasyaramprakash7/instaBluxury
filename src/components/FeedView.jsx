@@ -187,11 +187,13 @@ export function VideoScrubber({ videoRef }) {
 
 function FeedVideoPlayer({ src, isActive, muted, onToggleMute }) {
   const vRef = useRef(null);
+  const [userPaused, setUserPaused] = useState(false);
 
   useEffect(() => {
     const v = vRef.current;
     if (!v) return;
     if (isActive) {
+      setUserPaused(false);
       v.muted = muted;
       const playPromise = v.play();
       if (playPromise !== undefined) {
@@ -202,11 +204,35 @@ function FeedVideoPlayer({ src, isActive, muted, onToggleMute }) {
       }
     } else {
       v.pause();
+      v.currentTime = 0;
+      setUserPaused(false);
     }
-  }, [isActive, muted, src]);
+  }, [isActive, src]);
+
+  useEffect(() => {
+    if (vRef.current) {
+      vRef.current.muted = muted;
+    }
+  }, [muted]);
+
+  const togglePlayPause = (e) => {
+    e.stopPropagation();
+    const v = vRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play().catch(() => {});
+      setUserPaused(false);
+    } else {
+      v.pause();
+      setUserPaused(true);
+    }
+  };
 
   return (
-    <div style={{ position: "relative", width: "100%", minHeight: 240, display: "grid", placeItems: "center", background: "#000" }}>
+    <div
+      style={{ position: "relative", width: "100%", minHeight: 240, display: "grid", placeItems: "center", background: "#000", cursor: "pointer" }}
+      onClick={togglePlayPause}
+    >
       <video
         ref={vRef}
         src={src}
@@ -216,12 +242,33 @@ function FeedVideoPlayer({ src, isActive, muted, onToggleMute }) {
         preload="metadata"
         className="media-el"
         onLoadedData={() => {
-          if (isActive && vRef.current && vRef.current.paused) {
+          if (isActive && !userPaused && vRef.current && vRef.current.paused) {
             vRef.current.play().catch(() => {});
           }
         }}
-        onClick={onToggleMute}
       />
+
+      {userPaused && (
+        <div
+          style={{
+            position: "absolute",
+            width: 58,
+            height: 58,
+            borderRadius: "50%",
+            background: "rgba(0,0,0,0.6)",
+            color: "#fff",
+            display: "grid",
+            placeItems: "center",
+            pointerEvents: "none",
+            zIndex: 6,
+          }}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="7 4 20 12 7 20 7 4" />
+          </svg>
+        </div>
+      )}
+
       <button
         type="button"
         className="mute-btn"
@@ -256,44 +303,25 @@ export default function FeedView({
   const [activeStory, setActiveStory] = useState(null);
   const [heartAnim, setHeartAnim] = useState(null);
   const [activeVideoPostId, setActiveVideoPostId] = useState(null);
-  const [feedMuted, setFeedMuted] = useState(true);
+  const [feedMuted, setFeedMuted] = useState(false);
   const postRefs = useRef({});
-  const visibilityMap = useRef({});
-
-  // Immediately activate the first video post on mount or when returning from Reels/other tabs
-  useEffect(() => {
-    const videoPosts = posts.filter((p) => p.media_type === "video");
-    if (videoPosts.length > 0 && (!activeVideoPostId || !videoPosts.some((p) => p.id === activeVideoPostId))) {
-      setActiveVideoPostId(videoPosts[0].id);
-    }
-  }, [posts, activeVideoPostId]);
 
   useEffect(() => {
-    visibilityMap.current = {};
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
+        entries.forEach((entry) => {
           const id = entry.target.getAttribute("data-post-id");
-          if (!id) continue;
-          if (entry.isIntersecting) {
-            visibilityMap.current[id] = entry.intersectionRatio;
+          if (!id) return;
+          
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
+            setActiveVideoPostId(id);
           } else {
-            delete visibilityMap.current[id];
+            // If the video card scrolled out of view, pause it immediately
+            setActiveVideoPostId((current) => (current === id ? null : current));
           }
-        }
-
-        // Pick whichever video post currently has the highest visible percentage on screen
-        let bestId = null;
-        let bestRatio = 0.1;
-        for (const [id, ratio] of Object.entries(visibilityMap.current)) {
-          if (ratio > bestRatio) {
-            bestRatio = ratio;
-            bestId = id;
-          }
-        }
-        if (bestId) setActiveVideoPostId(bestId);
+        });
       },
-      { threshold: [0.15, 0.35, 0.6, 0.85] }
+      { threshold: [0.3, 0.5, 0.7] }
     );
 
     Object.values(postRefs.current).forEach((el) => {

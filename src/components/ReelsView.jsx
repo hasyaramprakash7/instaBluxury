@@ -2,11 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import { Avatar, parseCaptionLink, VideoScrubber } from "./FeedView";
 import { IconHeart, IconComment, IconBookmark, IconVolume, IconReels } from "./Icons";
 
-function SingleReelCard({
+export function SingleReelCard({
   reel,
   isActive,
   muted,
+  autoScroll,
   onToggleMute,
+  onVideoEnded,
   me,
   requireAuth,
   onLike,
@@ -20,12 +22,14 @@ function SingleReelCard({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [txt, setTxt] = useState("");
   const [heartAnim, setHeartAnim] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
   const { text: cleanCaption, link: reelLink } = parseCaptionLink(reel.caption);
 
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     if (isActive) {
+      setUserPaused(false);
       v.muted = muted;
       v.play().catch(() => {
         v.muted = true;
@@ -34,8 +38,28 @@ function SingleReelCard({
     } else {
       v.pause();
       v.currentTime = 0;
+      setUserPaused(false);
     }
-  }, [isActive, muted]);
+  }, [isActive]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = muted;
+    }
+  }, [muted]);
+
+  const togglePlayPause = (e) => {
+    e.stopPropagation();
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play().catch(() => {});
+      setUserPaused(false);
+    } else {
+      v.pause();
+      setUserPaused(true);
+    }
+  };
 
   const handleDoubleTap = () => {
     requireAuth(() => {
@@ -57,13 +81,37 @@ function SingleReelCard({
           ref={videoRef}
           src={reel.media_url}
           className="reel-media"
-          loop
+          loop={!autoScroll}
           playsInline
           muted={muted}
-          onClick={onToggleMute}
+          onEnded={() => {
+            if (autoScroll && isActive && onVideoEnded) onVideoEnded();
+          }}
+          onClick={togglePlayPause}
         />
       ) : (
         <img src={reel.media_url} alt="" className="reel-media" />
+      )}
+
+      {userPaused && reel.media_type === "video" && (
+        <div
+          style={{
+            position: "absolute",
+            width: 64,
+            height: 64,
+            borderRadius: "50%",
+            background: "rgba(0,0,0,0.6)",
+            color: "#fff",
+            display: "grid",
+            placeItems: "center",
+            pointerEvents: "none",
+            zIndex: 6,
+          }}
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="7 4 20 12 7 20 7 4" />
+          </svg>
+        </div>
       )}
 
       {reel.media_type === "video" && (
@@ -120,21 +168,20 @@ function SingleReelCard({
       </div>
 
       <div className="reel-rail">
-        <button onClick={() => requireAuth(() => onLike(reel.id))}>
+        <button onClick={(e) => { e.stopPropagation(); requireAuth(() => onLike(reel.id)); }}>
           <IconHeart filled={reel.liked} size={28} />
           <small>{reel.like_count}</small>
         </button>
-        <button onClick={() => setDrawerOpen(!drawerOpen)}>
+        <button onClick={(e) => { e.stopPropagation(); setDrawerOpen(!drawerOpen); }}>
           <IconComment size={28} />
           <small>{reel.comment_count}</small>
         </button>
-        <button onClick={() => requireAuth(() => onSave(reel.id))}>
+        <button onClick={(e) => { e.stopPropagation(); requireAuth(() => onSave(reel.id)); }}>
           <IconBookmark filled={reel.saved} size={28} />
           <small>Save</small>
         </button>
       </div>
 
-      {/* DRAGGABLE VIDEO TIMELINE SCRUBBER AT BOTTOM */}
       {reel.media_type === "video" && <VideoScrubber videoRef={videoRef} />}
 
       {drawerOpen && (
@@ -187,6 +234,7 @@ export default function ReelsView({
 }) {
   const [activeId, setActiveId] = useState(reels[0]?.id || null);
   const [muted, setMuted] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(false);
   const cardRefs = useRef({});
   const containerRef = useRef(null);
 
@@ -215,6 +263,13 @@ export default function ReelsView({
     return () => observer.disconnect();
   }, [reels]);
 
+  const scrollToNext = (currentIndex) => {
+    const nextReel = reels[currentIndex + 1];
+    if (nextReel && cardRefs.current[nextReel.id]) {
+      cardRefs.current[nextReel.id].scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
   if (reels.length === 0) {
     return (
       <div className="empty-box" style={{ maxWidth: 460, margin: "40px auto" }}>
@@ -229,24 +284,53 @@ export default function ReelsView({
   }
 
   return (
-    <div className="reels-container" ref={containerRef}>
-      {reels.map((r) => (
-        <SingleReelCard
-          key={r.id}
-          reel={r}
-          isActive={activeId === r.id}
-          muted={muted}
-          onToggleMute={() => setMuted((m) => !m)}
-          me={me}
-          requireAuth={requireAuth}
-          onLike={onLike}
-          onSave={onSave}
-          onComment={onComment}
-          onFollow={onFollow}
-          onOpenProfile={onOpenProfile}
-          registerRef={(id, el) => { cardRefs.current[id] = el; }}
-        />
-      ))}
+    <div style={{ position: "relative", maxWidth: 440, margin: "0 auto", background: "#000" }}>
+      {/* AUTO-SCROLL PILL TOGGLE */}
+      <button
+        type="button"
+        onClick={() => setAutoScroll((a) => !a)}
+        style={{
+          position: "absolute",
+          top: 14,
+          left: 14,
+          zIndex: 15,
+          background: autoScroll ? "#0095f6" : "rgba(0,0,0,0.58)",
+          color: "#fff",
+          border: "1px solid rgba(255,255,255,0.28)",
+          borderRadius: 20,
+          padding: "5px 12px",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+        }}
+      >
+        <span>{autoScroll ? "⟳ Auto-Scroll ON" : "⟳ Auto-Scroll"}</span>
+      </button>
+
+      <div className="reels-container" ref={containerRef}>
+        {reels.map((r, idx) => (
+          <SingleReelCard
+            key={r.id}
+            reel={r}
+            isActive={activeId === r.id}
+            muted={muted}
+            autoScroll={autoScroll}
+            onToggleMute={() => setMuted((m) => !m)}
+            onVideoEnded={() => scrollToNext(idx)}
+            me={me}
+            requireAuth={requireAuth}
+            onLike={onLike}
+            onSave={onSave}
+            onComment={onComment}
+            onFollow={onFollow}
+            onOpenProfile={onOpenProfile}
+            registerRef={(id, el) => { cardRefs.current[id] = el; }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

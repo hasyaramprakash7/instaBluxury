@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { Avatar, parseCaptionLink } from "./FeedView";
-import { IconHeart, IconComment, IconReels, IconBookmark, IconGrid, IconTrash } from "./Icons";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Avatar, parseCaptionLink, VideoScrubber } from "./FeedView";
+import { IconHeart, IconComment, IconReels, IconBookmark, IconGrid, IconTrash, IconVolume, IconBack } from "./Icons";
 
 function parseBioAndLinks(rawBio = "") {
   const lines = String(rawBio || "").split("\n");
@@ -32,6 +32,352 @@ const IconGear = () => (
   </svg>
 );
 
+function ProfileReelSlide({
+  item,
+  profile,
+  isMe,
+  isActive,
+  muted,
+  onToggleMute,
+  requireAuth,
+  onLike,
+  onSave,
+  onComment,
+  onDeletePost,
+  registerRef,
+}) {
+  const videoRef = useRef(null);
+  const [userPaused, setUserPaused] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [txt, setTxt] = useState("");
+  const [heartAnim, setHeartAnim] = useState(false);
+  const { text: cleanCaption, link: itemLink } = parseCaptionLink(item.caption);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (isActive) {
+      setUserPaused(false);
+      v.muted = muted;
+      v.play().catch(() => {
+        v.muted = true;
+        v.play().catch(() => {});
+      });
+    } else {
+      v.pause();
+      v.currentTime = 0;
+      setUserPaused(false);
+    }
+  }, [isActive]);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = muted;
+  }, [muted]);
+
+  const togglePlayPause = (e) => {
+    e.stopPropagation();
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused) {
+      v.play().catch(() => {});
+      setUserPaused(false);
+    } else {
+      v.pause();
+      setUserPaused(true);
+    }
+  };
+
+  return (
+    <div
+      data-prof-reel-id={item.id}
+      ref={(el) => registerRef(item.id, el)}
+      onDoubleClick={() => {
+        requireAuth(() => {
+          setHeartAnim(true);
+          setTimeout(() => setHeartAnim(false), 700);
+          if (!item.liked) onLike(item.id);
+        });
+      }}
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100dvh",
+        flex: "0 0 100dvh",
+        scrollSnapAlign: "start",
+        scrollSnapStop: "always",
+        background: "#000",
+        color: "#fff",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+      }}
+    >
+      {item.media_type === "video" ? (
+        <video
+          ref={videoRef}
+          src={item.media_url}
+          loop
+          playsInline
+          muted={muted}
+          onClick={togglePlayPause}
+          style={{ width: "100%", height: "100%", objectFit: "contain", cursor: "pointer" }}
+        />
+      ) : (
+        <img src={item.media_url} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+      )}
+
+      {userPaused && item.media_type === "video" && (
+        <div
+          style={{
+            position: "absolute",
+            width: 64,
+            height: 64,
+            borderRadius: "50%",
+            background: "rgba(0,0,0,0.6)",
+            color: "#fff",
+            display: "grid",
+            placeItems: "center",
+            pointerEvents: "none",
+            zIndex: 6,
+          }}
+        >
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="7 4 20 12 7 20 7 4" />
+          </svg>
+        </div>
+      )}
+
+      {heartAnim && (
+        <div className="big-heart" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
+          <IconHeart filled size={90} />
+        </div>
+      )}
+
+      {/* Top right sound & delete controls */}
+      <div style={{ position: "absolute", top: 14, right: 14, zIndex: 15, display: "flex", gap: 8 }}>
+        {item.media_type === "video" && (
+          <button
+            type="button"
+            className="home-circle-btn"
+            onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
+            aria-label="Toggle sound"
+          >
+            <IconVolume muted={muted} />
+          </button>
+        )}
+        {isMe && (
+          <button
+            type="button"
+            className="home-circle-btn"
+            style={{ color: "#ff6b6b" }}
+            title="Delete permanently"
+            onClick={(e) => { e.stopPropagation(); onDeletePost(item.id); }}
+          >
+            <IconTrash />
+          </button>
+        )}
+      </div>
+
+      {/* Bottom-left user info & clickable link */}
+      <div className="reel-info">
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <Avatar url={profile.avatar_url} name={profile.username} size={36} ring />
+          <b>{profile.username}</b>
+          {profile.verified ? <span className="badge-v">✓</span> : null}
+        </div>
+        {cleanCaption && <p className="reel-cap">{cleanCaption}</p>}
+        {item.location && <small style={{ opacity: 0.85, display: "block", marginBottom: 6 }}>{item.location}</small>}
+        {itemLink && (
+          <a
+            href={itemLink.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 6,
+              background: "rgba(255,255,255,0.94)",
+              color: "#000",
+              padding: "6px 12px",
+              borderRadius: 18,
+              fontSize: 12.5,
+              fontWeight: 600,
+              textDecoration: "none",
+              textShadow: "none",
+            }}
+          >
+            🔗 {itemLink.label} ↗
+          </a>
+        )}
+      </div>
+
+      {/* Right-side action rail */}
+      <div className="reel-rail">
+        <button onClick={(e) => { e.stopPropagation(); requireAuth(() => onLike(item.id)); }}>
+          <IconHeart filled={item.liked} size={28} />
+          <small>{item.like_count}</small>
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); setDrawerOpen(!drawerOpen); }}>
+          <IconComment size={28} />
+          <small>{item.comment_count}</small>
+        </button>
+        <button onClick={(e) => { e.stopPropagation(); requireAuth(() => onSave(item.id)); }}>
+          <IconBookmark filled={item.saved} size={28} />
+          <small>Save</small>
+        </button>
+      </div>
+
+      {item.media_type === "video" && <VideoScrubber videoRef={videoRef} />}
+
+      {drawerOpen && (
+        <div className="reel-drawer" onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+            <b>Comments ({item.comments?.length || 0})</b>
+            <button style={{ border: 0, background: "none", fontSize: 16, cursor: "pointer" }} onClick={() => setDrawerOpen(false)}>✕</button>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {!item.comments || item.comments.length === 0 ? (
+              <p style={{ color: "#737373", fontSize: 13 }}>No comments yet.</p>
+            ) : (
+              item.comments.map((c) => (
+                <div key={c.id} style={{ marginBottom: 8, fontSize: 13 }}>
+                  <b>{c.username}</b> {c.text}
+                </div>
+              ))
+            )}
+          </div>
+          <form
+            className="comment-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!txt.trim()) return;
+              requireAuth(() => {
+                onComment(item.id, txt.trim());
+                setTxt("");
+              });
+            }}
+          >
+            <input placeholder="Add a comment..." value={txt} onChange={(e) => setTxt(e.target.value)} />
+            <button type="submit">Post</button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileReelsViewer({
+  items,
+  initialId,
+  profile,
+  isMe,
+  requireAuth,
+  onLike,
+  onSave,
+  onComment,
+  onDeletePost,
+  onClose,
+}) {
+  const [activeId, setActiveId] = useState(initialId);
+  const [muted, setMuted] = useState(false);
+  const containerRef = useRef(null);
+  const refs = useRef({});
+
+  useEffect(() => {
+    const el = refs.current[initialId];
+    if (el) {
+      el.scrollIntoView({ behavior: "auto", block: "start" });
+    }
+  }, [initialId]);
+
+  useEffect(() => {
+    const rootEl = containerRef.current;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.7) {
+            const id = entry.target.getAttribute("data-prof-reel-id");
+            if (id) setActiveId(id);
+          }
+        }
+      },
+      { root: rootEl, threshold: [0.7] }
+    );
+    Object.values(refs.current).forEach((el) => { if (el) observer.observe(el); });
+    return () => observer.disconnect();
+  }, [items]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#000",
+        zIndex: 120,
+        display: "flex",
+        justifyContent: "center",
+      }}
+    >
+      <div style={{ position: "relative", width: "100%", maxWidth: 440, height: "100dvh", background: "#000" }}>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Back to profile"
+          style={{
+            position: "absolute",
+            top: 14,
+            left: 14,
+            zIndex: 25,
+            background: "rgba(0,0,0,0.6)",
+            color: "#fff",
+            border: 0,
+            borderRadius: "50%",
+            width: 38,
+            height: 38,
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+          }}
+        >
+          <IconBack />
+        </button>
+
+        <div
+          ref={containerRef}
+          style={{
+            width: "100%",
+            height: "100dvh",
+            overflowY: "scroll",
+            scrollSnapType: "y mandatory",
+            scrollbarWidth: "none",
+          }}
+        >
+          {items.map((item) => (
+            <ProfileReelSlide
+              key={item.id}
+              item={item}
+              profile={profile}
+              isMe={isMe}
+              isActive={activeId === item.id}
+              muted={muted}
+              onToggleMute={() => setMuted((m) => !m)}
+              requireAuth={requireAuth}
+              onLike={onLike}
+              onSave={onSave}
+              onComment={onComment}
+              onDeletePost={onDeletePost}
+              registerRef={(id, el) => { refs.current[id] = el; }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProfileView({
   api,
   token,
@@ -50,7 +396,7 @@ export default function ProfileView({
   const [posts, setPosts] = useState([]);
   const [saved, setSaved] = useState([]);
   const [tab, setTab] = useState("all");
-  const [selectedItem, setSelectedItem] = useState(null);
+  const [viewerItemId, setViewerItemId] = useState(null);
 
   const [editing, setEditing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -127,6 +473,25 @@ export default function ProfileView({
     setBusy(false);
   };
 
+  const handleLocalLike = async (postId) => {
+    await onLike(postId);
+    load();
+  };
+
+  const handleLocalSave = async (postId) => {
+    await fetch(`${api}/api/posts/${postId}/save`, { method: "POST", headers: authHeaders });
+    load();
+  };
+
+  const handleLocalComment = async (postId, text) => {
+    await fetch(`${api}/api/posts/${postId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+      body: JSON.stringify({ text }),
+    });
+    load();
+  };
+
   if (!profile) return <div style={{ padding: 40, textAlign: "center" }}>Loading profile...</div>;
 
   const { cleanBio, links: profileLinks } = parseBioAndLinks(profile.bio);
@@ -139,12 +504,6 @@ export default function ProfileView({
       : tab === "reels"
       ? posts.filter((p) => p.type === "reel")
       : saved;
-
-  const activeModalItem = selectedItem
-    ? posts.find((p) => p.id === selectedItem.id) || saved.find((p) => p.id === selectedItem.id) || null
-    : null;
-
-  const modalParsed = activeModalItem ? parseCaptionLink(activeModalItem.caption) : null;
 
   return (
     <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 16px" }}>
@@ -332,7 +691,7 @@ export default function ProfileView({
       ) : (
         <div className="explore-grid">
           {shown.map((p) => (
-            <div key={p.id} className="exp-tile" onClick={() => setSelectedItem(p)}>
+            <div key={p.id} className="exp-tile" onClick={() => setViewerItemId(p.id)}>
               {p.media_type === "video" ? (
                 <video src={p.media_url} muted playsInline preload="metadata" />
               ) : (
@@ -348,88 +707,24 @@ export default function ProfileView({
         </div>
       )}
 
-      {activeModalItem && (
-        <div className="modal-bg" onClick={() => setSelectedItem(null)}>
-          <div className="exp-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="exp-m-media">
-              {activeModalItem.media_type === "video" ? (
-                <video src={activeModalItem.media_url} controls autoPlay loop />
-              ) : (
-                <img src={activeModalItem.media_url} alt="" />
-              )}
-            </div>
-            <div className="exp-m-side">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: "1px solid #efefef" }}>
-                <b>{profile.username}</b>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {isMe && (
-                    <button
-                      className="btn-del"
-                      title="Delete permanently from Cloudflare R2 & SQL"
-                      onClick={async () => {
-                        await onDeletePost(activeModalItem.id);
-                        setSelectedItem(null);
-                        load();
-                      }}
-                    >
-                      <IconTrash />
-                    </button>
-                  )}
-                  <button style={{ border: 0, background: "none", fontSize: 18, cursor: "pointer" }} onClick={() => setSelectedItem(null)}>✕</button>
-                </div>
-              </div>
-
-              {/* CLICKABLE LINK BANNER WHEN OPENED FROM PROFILE */}
-              {modalParsed?.link && (
-                <a
-                  href={modalParsed.link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "10px 12px",
-                    marginTop: 10,
-                    borderRadius: 8,
-                    background: "#f0f8ff",
-                    border: "1px solid #b3dcff",
-                    color: "#0077cc",
-                    textDecoration: "none",
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                  }}
-                >
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    🔗 {modalParsed.link.label}
-                    <span style={{ fontWeight: 400, color: "#737373", fontSize: 12, marginLeft: 6 }}>
-                      ({modalParsed.link.url.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0]})
-                    </span>
-                  </span>
-                  <span style={{ flex: "none", marginLeft: 8 }}>↗</span>
-                </a>
-              )}
-
-              <div style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
-                {modalParsed?.text && (
-                  <p><b>{profile.username}</b> {modalParsed.text}</p>
-                )}
-                {activeModalItem.comments?.map((c) => (
-                  <p key={c.id} style={{ fontSize: 13 }}><b>{c.username}</b> {c.text}</p>
-                ))}
-              </div>
-              <div style={{ borderTop: "1px solid #efefef", paddingTop: 10 }}>
-                <button
-                  className="ic-btn"
-                  style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 600 }}
-                  onClick={() => requireAuth(async () => { await onLike(activeModalItem.id); load(); })}
-                >
-                  <IconHeart filled={activeModalItem.liked} size={22} /> {activeModalItem.like_count} likes
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* FULL-SCREEN REELS-STYLE VIEWER FOR THIS USER'S POSTS & REELS */}
+      {viewerItemId && shown.length > 0 && (
+        <ProfileReelsViewer
+          items={shown}
+          initialId={viewerItemId}
+          profile={profile}
+          isMe={isMe}
+          requireAuth={requireAuth}
+          onLike={handleLocalLike}
+          onSave={handleLocalSave}
+          onComment={handleLocalComment}
+          onDeletePost={async (postId) => {
+            await onDeletePost(postId);
+            setViewerItemId(null);
+            load();
+          }}
+          onClose={() => setViewerItemId(null)}
+        />
       )}
     </div>
   );
