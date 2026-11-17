@@ -154,12 +154,12 @@ function ProfileReelSlide({
         </div>
       )}
 
-      {/* Top right sound & delete controls */}
       <div style={{ position: "absolute", top: 14, right: 14, zIndex: 15, display: "flex", gap: 8 }}>
         {item.media_type === "video" && (
           <button
             type="button"
-            className="home-circle-btn"
+            className="mute-btn"
+            style={{ position: "static" }}
             onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
             aria-label="Toggle sound"
           >
@@ -169,8 +169,8 @@ function ProfileReelSlide({
         {isMe && (
           <button
             type="button"
-            className="home-circle-btn"
-            style={{ color: "#ff6b6b" }}
+            className="mute-btn"
+            style={{ position: "static", color: "#ff6b6b" }}
             title="Delete permanently"
             onClick={(e) => { e.stopPropagation(); onDeletePost(item.id); }}
           >
@@ -179,7 +179,6 @@ function ProfileReelSlide({
         )}
       </div>
 
-      {/* Bottom-left user info & clickable link */}
       <div className="reel-info">
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <Avatar url={profile.avatar_url} name={profile.username} size={36} ring />
@@ -214,7 +213,6 @@ function ProfileReelSlide({
         )}
       </div>
 
-      {/* Right-side action rail */}
       <div className="reel-rail">
         <button onClick={(e) => { e.stopPropagation(); requireAuth(() => onLike(item.id)); }}>
           <IconHeart filled={item.liked} size={28} />
@@ -386,6 +384,8 @@ export default function ProfileView({
   refreshTrigger,
   requireAuth,
   onLike,
+  onSave,
+  onComment,
   onDeletePost,
   onDeleteAccount,
   onFollow,
@@ -479,16 +479,12 @@ export default function ProfileView({
   };
 
   const handleLocalSave = async (postId) => {
-    await fetch(`${api}/api/posts/${postId}/save`, { method: "POST", headers: authHeaders });
+    await onSave(postId);
     load();
   };
 
   const handleLocalComment = async (postId, text) => {
-    await fetch(`${api}/api/posts/${postId}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders },
-      body: JSON.stringify({ text }),
-    });
+    await onComment(postId, text);
     load();
   };
 
@@ -707,7 +703,6 @@ export default function ProfileView({
         </div>
       )}
 
-      {/* FULL-SCREEN REELS-STYLE VIEWER FOR THIS USER'S POSTS & REELS */}
       {viewerItemId && shown.length > 0 && (
         <ProfileReelsViewer
           items={shown}

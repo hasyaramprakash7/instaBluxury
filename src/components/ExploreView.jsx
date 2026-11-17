@@ -125,7 +125,6 @@ function ExploreSlide({
         </div>
       )}
 
-      {/* Close Back Button */}
       <button
         type="button"
         onClick={onClose}
@@ -149,7 +148,6 @@ function ExploreSlide({
         <IconBack />
       </button>
 
-      {/* Top right sound control */}
       {item.media_type === "video" && (
         <button
           className="mute-btn"
@@ -249,7 +247,7 @@ function ExploreSlide({
   );
 }
 
-function ExploreReelsViewer({ items, initialId, requireAuth, onLike, onSave, onComment, onClose }) {
+function ExploreReelsViewer({ items, initialId, requireAuth, onLike, onSave, onComment, onOpenProfile, onClose }) {
   const [activeId, setActiveId] = useState(initialId);
   const [muted, setMuted] = useState(false);
   const containerRef = useRef(null);
@@ -312,7 +310,7 @@ function ExploreReelsViewer({ items, initialId, requireAuth, onLike, onSave, onC
               onLike={onLike}
               onSave={onSave}
               onComment={onComment}
-              onOpenProfile={() => {}}
+              onOpenProfile={(uid) => { onClose(); onOpenProfile(uid); }}
               onClose={onClose}
               registerRef={(id, el) => { refs.current[id] = el; }}
             />
@@ -323,7 +321,7 @@ function ExploreReelsViewer({ items, initialId, requireAuth, onLike, onSave, onC
   );
 }
 
-export default function ExploreView({ posts, users, requireAuth, onOpenProfile, onLike }) {
+export default function ExploreView({ posts, users, requireAuth, onOpenProfile, onLike, onSave, onComment }) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState(null);
 
@@ -332,30 +330,6 @@ export default function ExploreView({ posts, users, requireAuth, onOpenProfile, 
   const filteredPosts = q
     ? posts.filter((p) => p.caption.toLowerCase().includes(q) || p.location.toLowerCase().includes(q) || p.username.includes(q))
     : posts;
-
-  const handleLocalLike = async (postId) => {
-    await onLike(postId);
-  };
-
-  const handleLocalSave = async (postId) => {
-    // Save/Bookmark handler
-    const token = localStorage.getItem("bluxury_tok");
-    if (!token) return;
-    await fetch(`/api/posts/${postId}/save`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  };
-
-  const handleLocalComment = async (postId, text) => {
-    const token = localStorage.getItem("bluxury_tok");
-    if (!token) return;
-    await fetch(`/api/posts/${postId}/comments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ text }),
-    });
-  };
 
   return (
     <div style={{ maxWidth: 940, margin: "0 auto", padding: "16px" }}>
@@ -405,9 +379,10 @@ export default function ExploreView({ posts, users, requireAuth, onOpenProfile, 
           items={filteredPosts}
           initialId={selectedId}
           requireAuth={requireAuth}
-          onLike={handleLocalLike}
-          onSave={handleLocalSave}
-          onComment={handleLocalComment}
+          onLike={onLike}
+          onSave={onSave}
+          onComment={onComment}
+          onOpenProfile={onOpenProfile}
           onClose={() => setSelectedId(null)}
         />
       )}

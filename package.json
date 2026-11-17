@@ -3,11 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "scripts": {
+ "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "local": "npm run build && npx wrangler pages dev dist",
-    "deploy": "npm run build && npx wrangler pages deploy dist --project-name=rk-gram"
+    "local": "npm run build && npx wrangler pages dev dist -c wrangler.toml -c wrangler.do.toml",
+    "deploy": "npx wrangler deploy -c wrangler.do.toml && npm run build && npx wrangler pages deploy dist --project-name=bluxury"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.5",

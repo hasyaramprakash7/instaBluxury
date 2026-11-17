@@ -288,6 +288,8 @@ export default function FeedView({
   posts,
   stories,
   suggestions,
+  aiFeed,
+  setAiFeed,
   requireAuth,
   onLike,
   onSave,
@@ -312,11 +314,9 @@ export default function FeedView({
         entries.forEach((entry) => {
           const id = entry.target.getAttribute("data-post-id");
           if (!id) return;
-          
           if (entry.isIntersecting && entry.intersectionRatio >= 0.45) {
             setActiveVideoPostId(id);
           } else {
-            // If the video card scrolled out of view, pause it immediately
             setActiveVideoPostId((current) => (current === id ? null : current));
           }
         });
@@ -354,7 +354,7 @@ export default function FeedView({
   return (
     <div className="feed-layout">
       <div className="feed-main">
-        {/* STORIES BAR */}
+        {/* STORIES BAR + AI FEED TOGGLE */}
         <div className="stories-bar">
           <div className="story-item" onClick={() => requireAuth(onOpenCreateStory)}>
             <div style={{ position: "relative" }}>
@@ -370,6 +370,30 @@ export default function FeedView({
             </div>
           ))}
         </div>
+
+        {me && (
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px 12px" }}>
+            <span style={{ fontSize: 12.5, color: "#737373", fontWeight: 600 }}>
+              {aiFeed ? "Personalized via Cloudflare Vectorize AI" : "Latest Chronological Feed"}
+            </span>
+            <button
+              type="button"
+              onClick={() => setAiFeed(!aiFeed)}
+              style={{
+                background: aiFeed ? "#0095f6" : "#efefef",
+                color: aiFeed ? "#fff" : "#000",
+                border: 0,
+                padding: "5px 12px",
+                borderRadius: 16,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {aiFeed ? "✨ AI Feed ON" : "✨ For You (AI)"}
+            </button>
+          </div>
+        )}
 
         {/* POSTS & REELS STREAM */}
         {posts.length === 0 ? (
@@ -410,7 +434,7 @@ export default function FeedView({
                       </button>
                     )}
                     {me && p.user_id === me.id && (
-                      <button className="btn-del" title="Delete permanently from Cloudflare R2 & SQL" onClick={() => onDeletePost(p.id)}>
+                      <button className="btn-del" title="Delete permanently from Cloudflare R2 & Durable Object" onClick={() => onDeletePost(p.id)}>
                         <IconTrash />
                       </button>
                     )}
@@ -438,7 +462,6 @@ export default function FeedView({
                   )}
                 </div>
 
-                {/* CLICKABLE LINK BANNER DIRECTLY BELOW MEDIA */}
                 {postLink && (
                   <a
                     href={postLink.url}

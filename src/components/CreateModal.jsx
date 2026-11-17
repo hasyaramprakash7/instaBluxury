@@ -137,7 +137,7 @@ export default function CreateModal({ api, token, defaultType = "post", onClose,
           </div>
 
           <button className="btn-primary" disabled={busy || !file}>
-            {busy ? "Uploading to Cloudflare R2..." : `Share ${type.charAt(0).toUpperCase() + type.slice(1)}`}
+            {busy ? "Uploading to Cloudflare R2 & Indexing AI..." : `Share ${type.charAt(0).toUpperCase() + type.slice(1)}`}
           </button>
         </form>
       </div>

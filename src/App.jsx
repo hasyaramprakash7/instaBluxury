@@ -115,10 +115,6 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
 .exp-ov{position:absolute;inset:0;background:rgba(0,0,0,.35);color:#fff;display:flex;align-items:center;justify-content:center;gap:14px;font-weight:700;opacity:0;transition:.2s;font-size:13px}
 .exp-tile:hover .exp-ov{opacity:1}
 .tile-badge{position:absolute;top:6px;right:6px;color:#fff;filter:drop-shadow(0 1px 3px rgba(0,0,0,.8))}
-.exp-modal{background:#fff;max-width:860px;width:95%;height:76dvh;display:grid;grid-template-columns:1.3fr 1fr;border-radius:10px;overflow:hidden}
-.exp-m-media{background:#000;display:grid;place-items:center;overflow:hidden}
-.exp-m-media img,.exp-m-media video{width:100%;max-height:76dvh;object-fit:contain}
-.exp-m-side{padding:16px;display:flex;flex-direction:column;min-height:0}
 
 /* Modals & Create */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:100;display:grid;place-items:center;padding:12px}
@@ -193,11 +189,9 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
   .chat-shell.in-chat .chat-list{display:none}
   .chat-back-btn{display:grid;place-items:center}
 
-  /* Mobile profile & modals */
+  /* Mobile profile */
   .prof-hd{flex-direction:column;text-align:center;gap:14px;padding-bottom:18px}
   .prof-tabs{gap:14px}
-  .exp-modal{grid-template-columns:1fr;height:auto;max-height:90dvh;overflow-y:auto}
-  .exp-m-media img,.exp-m-media video{max-height:46dvh}
 }
 `;
 
@@ -207,7 +201,6 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const pendingActionRef = useRef(null);
 
-  // Navigation state synchronized with Browser History Stack (Back / Forward buttons)
   const [nav, setNav] = useState(() => {
     const s = window.history.state;
     return s && s.tab ? s : { tab: "home", profileId: null, chatPartnerId: null };
@@ -216,6 +209,7 @@ export default function App() {
   const depthRef = useRef(0);
 
   const [createType, setCreateType] = useState(null);
+  const [aiFeed, setAiFeed] = useState(false);
   const [posts, setPosts] = useState([]);
   const [reels, setReels] = useState([]);
   const [stories, setStories] = useState([]);
@@ -287,7 +281,7 @@ export default function App() {
 
   const loadAll = useCallback(async () => {
     const [feedRes, reelsRes, storyRes, usersRes] = await Promise.all([
-      fetch(`${API}/api/feed`, { headers: authHeaders }),
+      fetch(`${API}/api/feed${aiFeed ? "?ai_recommend=1" : ""}`, { headers: authHeaders }),
       fetch(`${API}/api/feed?type=reel`, { headers: authHeaders }),
       fetch(`${API}/api/feed?type=story`, { headers: authHeaders }),
       fetch(`${API}/api/users`, { headers: authHeaders }),
@@ -308,7 +302,7 @@ export default function App() {
         setMe(null);
       }
     }
-  }, [token]);
+  }, [token, aiFeed]);
 
   useEffect(() => {
     loadAll();
@@ -449,7 +443,7 @@ export default function App() {
   };
 
   const deletePost = async (postId) => {
-    if (!confirm("Permanently delete this post from Cloudflare R2 & SQL?")) return;
+    if (!confirm("Permanently delete this post from Cloudflare R2 & Durable Object?")) return;
     const res = await fetch(`${API}/api/posts/${postId}`, { method: "DELETE", headers: authHeaders });
     if (res.ok) {
       setPosts((p) => p.filter((x) => x.id !== postId));
@@ -461,7 +455,7 @@ export default function App() {
   };
 
   const deleteAccount = async () => {
-    if (!confirm("Are you sure? This will permanently delete your BLuxury account and all your photos/videos from Cloudflare R2 & SQL.")) return;
+    if (!confirm("Are you sure? This will permanently delete your BLuxury account and all your photos/videos from Cloudflare R2.")) return;
     const res = await fetch(`${API}/api/account`, { method: "DELETE", headers: authHeaders });
     if (res.ok) {
       localStorage.removeItem("bluxury_tok");
@@ -585,6 +579,8 @@ export default function App() {
             posts={posts}
             stories={stories}
             suggestions={users}
+            aiFeed={aiFeed}
+            setAiFeed={setAiFeed}
             requireAuth={requireAuth}
             onLike={toggleLike}
             onSave={toggleSave}
@@ -619,6 +615,8 @@ export default function App() {
             requireAuth={requireAuth}
             onOpenProfile={(uid) => navigate({ tab: "profile", profileId: uid })}
             onLike={toggleLike}
+            onSave={toggleSave}
+            onComment={addComment}
           />
         )}
 
@@ -643,6 +641,8 @@ export default function App() {
             refreshTrigger={syncTick}
             requireAuth={requireAuth}
             onLike={toggleLike}
+            onSave={toggleSave}
+            onComment={addComment}
             onDeletePost={deletePost}
             onDeleteAccount={deleteAccount}
             onFollow={toggleFollow}

@@ -1,7 +1,9 @@
-const json = (data, status = 200) =>
+
+export { PostCoordinator } from "../durable/PostCoordinator.js";
+const json = (data, status = 200, extraHeaders = {}) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...extraHeaders },
   });
 
 async function hashPassword(pw) {
@@ -47,7 +49,7 @@ export async function onRequest(context) {
   const mediaUrl = (key) => (key ? (/^https?:\/\//i.test(key) ? key : `/api/media/${key}`) : null);
 
   try {
-    // ==================== 1. STREAM R2 MEDIA WITH HTTP RANGE ====================
+    // 1. R2 Media Delivery with HTTP Range Support for Instant Video Scrubbing
     if (req.method === "GET" && path.startsWith("/api/media/")) {
       const key = decodeURIComponent(path.replace("/api/media/", ""));
       const rangeHeader = req.headers.get("Range");
@@ -70,6 +72,7 @@ export async function onRequest(context) {
         headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
         headers.set("Accept-Ranges", "bytes");
         headers.set("Content-Length", String(length));
+        headers.set("Cache-Control", "public, max-age=31536000, immutable");
         return new Response(obj.body, { status: 206, headers });
       }
 
@@ -80,11 +83,11 @@ export async function onRequest(context) {
       obj.writeHttpMetadata(headers);
       headers.set("Accept-Ranges", "bytes");
       headers.set("Content-Length", String(obj.size));
-      headers.set("Cache-Control", "public, max-age=31536000");
+      headers.set("Cache-Control", "public, max-age=31536000, immutable");
       return new Response(obj.body, { status: 200, headers });
     }
 
-    // ==================== 2. REAL-TIME LIVE SOCKET STREAM (SSE) ====================
+    // 2. Server-Sent Events (SSE) Real-Time Sync Stream
     if (req.method === "GET" && path === "/api/events") {
       const encoder = new TextEncoder();
       let lastSeqRow = await env.DB.prepare("SELECT MAX(seq) AS s FROM events").first().catch(() => ({ s: 0 }));
@@ -135,7 +138,7 @@ export async function onRequest(context) {
       });
     }
 
-    // ==================== 3. AUTHENTICATION ====================
+    // 3. Authentication Endpoints
     if (req.method === "POST" && path === "/api/auth/register") {
       const b = await req.json();
       const username = String(b.username || "").trim().toLowerCase().replace(/[^a-z0-9._]/g, "").slice(0, 30);
@@ -206,90 +209,104 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
-    // ==================== 4. PUBLIC & AUTHENTICATED FEED, REELS, STORIES & USERS ====================
+    // 4. Feed & AI Vectorize Recommendations + Sharded Durable Object Hydration
     if (req.method === "GET" && path === "/api/feed") {
       const typeFilter = url.searchParams.get("type");
       const userFilter = url.searchParams.get("user_id");
       const savedOnly = url.searchParams.get("saved") === "1";
+      const aiRecommend = url.searchParams.get("ai_recommend") === "1";
 
-      let query = `
-        SELECT p.*, u.username, u.full_name, u.avatar_key, u.verified,
-          (SELECT COUNT(*) FROM likes WHERE post_id = p.id) AS like_count,
-          (SELECT COUNT(*) FROM comments WHERE post_id = p.id) AS comment_count
-        FROM posts p
-        JOIN users u ON p.user_id = u.id
-      `;
-      const conditions = [];
-      const params = [];
+      let postsRes = null;
 
-      if (savedOnly && me) {
-        query += " JOIN saves s ON s.post_id = p.id AND s.user_id = ? ";
-        params.push(me.id);
+      if (aiRecommend && env.RECOMMENDER_VECTOR && me && !typeFilter && !userFilter && !savedOnly) {
+        try {
+          const queryVector = new Array(768).fill(0.015);
+          const vecMatches = await env.RECOMMENDER_VECTOR.query(queryVector, { topK: 30 });
+          const recIds = (vecMatches.matches || []).map((m) => m.id);
+          if (recIds.length > 0) {
+            const placeholders = recIds.map(() => "?").join(",");
+            postsRes = await env.DB.prepare(`
+              SELECT p.*, u.username, u.full_name, u.avatar_key, u.verified
+              FROM posts p
+              JOIN users u ON p.user_id = u.id
+              WHERE p.id IN (${placeholders}) AND p.type IN ('post', 'reel')
+            `).bind(...recIds).all();
+          }
+        } catch {}
       }
 
-      if (typeFilter === "story") {
-        conditions.push("p.type = 'story'");
-      } else if (typeFilter === "reel") {
-        conditions.push("p.type = 'reel'");
-      } else if (typeFilter === "post") {
-        conditions.push("p.type = 'post'");
-      } else {
-        conditions.push("p.type IN ('post', 'reel')");
+      if (!postsRes || !postsRes.results || postsRes.results.length === 0) {
+        let query = `
+          SELECT p.*, u.username, u.full_name, u.avatar_key, u.verified
+          FROM posts p
+          JOIN users u ON p.user_id = u.id
+        `;
+        const conditions = [];
+        const params = [];
+
+        if (typeFilter === "story") {
+          conditions.push("p.type = 'story'");
+        } else if (typeFilter === "reel") {
+          conditions.push("p.type = 'reel'");
+        } else if (typeFilter === "post") {
+          conditions.push("p.type = 'post'");
+        } else {
+          conditions.push("p.type IN ('post', 'reel')");
+        }
+
+        if (userFilter) {
+          conditions.push("p.user_id = ?");
+          params.push(userFilter);
+        }
+
+        if (conditions.length) query += " WHERE " + conditions.join(" AND ");
+        query += " ORDER BY p.created DESC LIMIT 100";
+
+        postsRes = await env.DB.prepare(query).bind(...params).all();
       }
 
-      if (userFilter) {
-        conditions.push("p.user_id = ?");
-        params.push(userFilter);
-      }
-
-      if (conditions.length) query += " WHERE " + conditions.join(" AND ");
-      query += " ORDER BY p.created DESC LIMIT 100";
-
-      const postsRes = await env.DB.prepare(query).bind(...params).all();
-      const postIds = postsRes.results.map((p) => p.id);
-
-      let likedSet = new Set();
-      let savedSet = new Set();
       let followingSet = new Set();
-
       if (me) {
-        const [myLikes, mySaves, myFollows] = await Promise.all([
-          env.DB.prepare("SELECT post_id FROM likes WHERE user_id = ?").bind(me.id).all(),
-          env.DB.prepare("SELECT post_id FROM saves WHERE user_id = ?").bind(me.id).all(),
-          env.DB.prepare("SELECT following_id FROM follows WHERE follower_id = ?").bind(me.id).all(),
-        ]);
-        likedSet = new Set(myLikes.results.map((r) => r.post_id));
-        savedSet = new Set(mySaves.results.map((r) => r.post_id));
+        const myFollows = await env.DB.prepare("SELECT following_id FROM follows WHERE follower_id = ?").bind(me.id).all();
         followingSet = new Set(myFollows.results.map((r) => r.following_id));
       }
 
-      let commentsMap = {};
-      if (postIds.length > 0) {
-        const allComments = await env.DB.prepare(`
-          SELECT c.id, c.post_id, c.text, c.created, u.username, u.avatar_key
-          FROM comments c
-          JOIN users u ON c.user_id = u.id
-          ORDER BY c.created ASC
-        `).all();
-        for (const c of allComments.results) {
-          if (!commentsMap[c.post_id]) commentsMap[c.post_id] = [];
-          commentsMap[c.post_id].push({ ...c, avatar_url: mediaUrl(c.avatar_key) });
-        }
-      }
+      // Hydrate interaction counts, user like/save states, and comments from sharded Durable Objects
+      const hydrated = await Promise.all(
+        postsRes.results.map(async (p) => {
+          let stats = { likesCount: 0, commentsCount: 0, liked: false, saved: false, comments: [] };
+          if (env.POST_COORDINATOR) {
+            try {
+              const stubId = env.POST_COORDINATOR.idFromName(p.id);
+              const obj = env.POST_COORDINATOR.get(stubId);
+              const statsRes = await obj.fetch(`https://do/stats?postId=${p.id}${me ? `&userId=${me.id}` : ""}`);
+              if (statsRes.ok) stats = await statsRes.json();
+            } catch {}
+          }
 
-      const items = postsRes.results.map((p) => ({
-        ...p,
-        media_url: mediaUrl(p.media_key),
-        avatar_url: mediaUrl(p.avatar_key),
-        liked: likedSet.has(p.id),
-        saved: savedSet.has(p.id),
-        following: followingSet.has(p.user_id),
-        comments: commentsMap[p.id] || [],
-      }));
+          return {
+            ...p,
+            media_url: mediaUrl(p.media_key),
+            avatar_url: mediaUrl(p.avatar_key),
+            like_count: stats.likesCount,
+            comment_count: stats.commentsCount,
+            liked: stats.liked,
+            saved: stats.saved,
+            following: followingSet.has(p.user_id),
+            comments: (stats.comments || []).map((c) => ({
+              ...c,
+              post_id: c.postId || p.id,
+              avatar_url: mediaUrl(c.avatarKey),
+            })),
+          };
+        })
+      );
 
+      const items = savedOnly ? hydrated.filter((item) => item.saved) : hydrated;
       return json({ items });
     }
 
+    // 5. Users & Profiles
     if (req.method === "GET" && path === "/api/users") {
       const q = (url.searchParams.get("q") || "").trim().toLowerCase();
       const usersRes = q
@@ -339,10 +356,9 @@ export async function onRequest(context) {
       });
     }
 
-    // ==================== 5. PROTECTED ROUTES (LOGIN REQUIRED) ====================
     if (!me) return json({ error: "Please sign in first" }, 401);
 
-    // Upload Post / Reel / Story to Cloudflare R2
+    // 6. Media Upload to R2 + AI Vectorize Indexing
     if (req.method === "POST" && path === "/api/posts") {
       const form = await req.formData();
       const file = form.get("file");
@@ -374,6 +390,15 @@ export async function onRequest(context) {
         .bind(postId, me.id, postType, key, mediaType, caption, location, created)
         .run();
 
+      if (env.AI && env.RECOMMENDER_VECTOR) {
+        try {
+          const emb = await env.AI.run("@cf/baai/bge-base-en-v1.5", { text: [caption || `${postType} media`] });
+          if (emb?.data?.[0]) {
+            await env.RECOMMENDER_VECTOR.upsert([{ id: postId, values: emb.data[0] }]);
+          }
+        } catch {}
+      }
+
       await emitEvent(env, "sync", { reason: "post_created", post_id: postId, user_id: me.id });
 
       return json({
@@ -389,31 +414,30 @@ export async function onRequest(context) {
       }, 201);
     }
 
-    // Hard Delete Post from Cloudflare R2 & D1 SQL
+    // 7. Hard Delete Post from R2, D1, and Durable Object
     if (req.method === "DELETE" && path.startsWith("/api/posts/")) {
       const postId = path.split("/").pop();
       const post = await env.DB.prepare("SELECT user_id, media_key FROM posts WHERE id = ?").bind(postId).first();
       if (!post) return json({ error: "Post not found" }, 404);
       if (post.user_id !== me.id) return json({ error: "Forbidden" }, 403);
 
-      // Delete binary file from Cloudflare R2 bucket
       if (post.media_key) {
-        await env.BUCKET.delete(post.media_key);
+        await env.BUCKET.delete(post.media_key).catch(() => {});
       }
 
-      // Delete post & related rows from Cloudflare D1 SQL
-      await Promise.all([
-        env.DB.prepare("DELETE FROM posts WHERE id = ?").bind(postId).run(),
-        env.DB.prepare("DELETE FROM likes WHERE post_id = ?").bind(postId).run(),
-        env.DB.prepare("DELETE FROM comments WHERE post_id = ?").bind(postId).run(),
-        env.DB.prepare("DELETE FROM saves WHERE post_id = ?").bind(postId).run(),
-      ]);
+      if (env.POST_COORDINATOR) {
+        try {
+          const stubId = env.POST_COORDINATOR.idFromName(postId);
+          await env.POST_COORDINATOR.get(stubId).fetch("https://do/delete", { method: "DELETE" });
+        } catch {}
+      }
 
+      await env.DB.prepare("DELETE FROM posts WHERE id = ?").bind(postId).run();
       await emitEvent(env, "sync", { reason: "post_deleted", post_id: postId });
       return json({ ok: true, deleted_r2_key: post.media_key });
     }
 
-    // Hard Delete Entire User Account + All Cloudflare R2 Files + D1 SQL Rows
+    // 8. Hard Delete Account
     if (req.method === "DELETE" && path === "/api/account") {
       const userPosts = await env.DB.prepare("SELECT id, media_key FROM posts WHERE user_id = ?").bind(me.id).all();
       const keysToDelete = userPosts.results.map((p) => p.media_key).filter(Boolean);
@@ -423,19 +447,18 @@ export async function onRequest(context) {
         await Promise.all(keysToDelete.map((k) => env.BUCKET.delete(k).catch(() => {})));
       }
 
-      for (const p of userPosts.results) {
-        await Promise.all([
-          env.DB.prepare("DELETE FROM likes WHERE post_id = ?").bind(p.id).run(),
-          env.DB.prepare("DELETE FROM comments WHERE post_id = ?").bind(p.id).run(),
-          env.DB.prepare("DELETE FROM saves WHERE post_id = ?").bind(p.id).run(),
-        ]);
+      if (env.POST_COORDINATOR) {
+        await Promise.all(
+          userPosts.results.map((p) =>
+            env.POST_COORDINATOR.get(env.POST_COORDINATOR.idFromName(p.id))
+              .fetch("https://do/delete", { method: "DELETE" })
+              .catch(() => {})
+          )
+        );
       }
 
       await Promise.all([
         env.DB.prepare("DELETE FROM posts WHERE user_id = ?").bind(me.id).run(),
-        env.DB.prepare("DELETE FROM likes WHERE user_id = ?").bind(me.id).run(),
-        env.DB.prepare("DELETE FROM comments WHERE user_id = ?").bind(me.id).run(),
-        env.DB.prepare("DELETE FROM saves WHERE user_id = ?").bind(me.id).run(),
         env.DB.prepare("DELETE FROM follows WHERE follower_id = ? OR following_id = ?").bind(me.id, me.id).run(),
         env.DB.prepare("DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?").bind(me.id, me.id).run(),
         env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(me.id).run(),
@@ -446,36 +469,29 @@ export async function onRequest(context) {
       return json({ ok: true });
     }
 
-    // Toggle Like
+    // 9. Lock-Free Sharded Interactions via Durable Objects (Like, Save, Comment)
     if (req.method === "POST" && path.endsWith("/like")) {
       const postId = path.split("/")[3];
-      const existing = await env.DB.prepare("SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?").bind(me.id, postId).first();
-      let liked = false;
-      if (existing) {
-        await env.DB.prepare("DELETE FROM likes WHERE user_id = ? AND post_id = ?").bind(me.id, postId).run();
-      } else {
-        await env.DB.prepare("INSERT INTO likes (user_id, post_id, created) VALUES (?, ?, ?)").bind(me.id, postId, Date.now()).run();
-        liked = true;
-      }
-      const cnt = await env.DB.prepare("SELECT COUNT(*) AS c FROM likes WHERE post_id = ?").bind(postId).first();
-      await emitEvent(env, "like", { post_id: postId, user_id: me.id, liked, like_count: cnt.c });
-      return json({ liked, like_count: cnt.c });
+      const stubId = env.POST_COORDINATOR.idFromName(postId);
+      const res = await env.POST_COORDINATOR.get(stubId).fetch("https://do/like", {
+        method: "POST",
+        body: JSON.stringify({ userId: me.id, postId }),
+      });
+      const data = await res.json();
+      await emitEvent(env, "like", { post_id: postId, user_id: me.id, liked: data.liked, like_count: data.like_count });
+      return json(data);
     }
 
-    // Toggle Save
     if (req.method === "POST" && path.endsWith("/save")) {
       const postId = path.split("/")[3];
-      const existing = await env.DB.prepare("SELECT 1 FROM saves WHERE user_id = ? AND post_id = ?").bind(me.id, postId).first();
-      if (existing) {
-        await env.DB.prepare("DELETE FROM saves WHERE user_id = ? AND post_id = ?").bind(me.id, postId).run();
-        return json({ saved: false });
-      } else {
-        await env.DB.prepare("INSERT INTO saves (user_id, post_id, created) VALUES (?, ?, ?)").bind(me.id, postId, Date.now()).run();
-        return json({ saved: true });
-      }
+      const stubId = env.POST_COORDINATOR.idFromName(postId);
+      const res = await env.POST_COORDINATOR.get(stubId).fetch("https://do/save", {
+        method: "POST",
+        body: JSON.stringify({ userId: me.id, postId }),
+      });
+      return json(await res.json());
     }
 
-    // Add Comment
     if (req.method === "POST" && path.endsWith("/comments")) {
       const postId = path.split("/")[3];
       const b = await req.json();
@@ -484,23 +500,26 @@ export async function onRequest(context) {
 
       const id = uid("c_");
       const created = Date.now();
-      await env.DB.prepare("INSERT INTO comments (id, post_id, user_id, text, created) VALUES (?, ?, ?, ?, ?)")
-        .bind(id, postId, me.id, text, created)
-        .run();
-
-      const commentObj = {
-        id,
-        post_id: postId,
-        text,
-        created,
-        username: me.username,
-        avatar_url: mediaUrl(me.avatar_key),
-      };
+      const stubId = env.POST_COORDINATOR.idFromName(postId);
+      const res = await env.POST_COORDINATOR.get(stubId).fetch("https://do/comment", {
+        method: "POST",
+        body: JSON.stringify({
+          id,
+          postId,
+          userId: me.id,
+          username: me.username,
+          avatarKey: me.avatar_key,
+          text,
+          created,
+        }),
+      });
+      const commentRaw = await res.json();
+      const commentObj = { ...commentRaw, avatar_url: mediaUrl(me.avatar_key) };
       await emitEvent(env, "comment", { post_id: postId, comment: commentObj });
       return json(commentObj, 201);
     }
 
-    // Toggle Follow
+    // 10. Follow & Profile Updates
     if (req.method === "POST" && path.endsWith("/follow")) {
       const targetId = path.split("/")[3];
       if (targetId === me.id) return json({ error: "Cannot follow yourself" }, 400);
@@ -520,7 +539,6 @@ export async function onRequest(context) {
       return json({ following });
     }
 
-    // Update Profile (deletes old R2 avatar when replaced)
     if (req.method === "POST" && path === "/api/profile") {
       const form = await req.formData();
       const fullName = String(form.get("full_name") || me.full_name).trim().slice(0, 80);
@@ -546,7 +564,7 @@ export async function onRequest(context) {
       return json({ ...me, full_name: fullName, bio, avatar_key: avatarKey, avatar_url: mediaUrl(avatarKey) });
     }
 
-    // ==================== 6. DIRECT MESSAGING ====================
+    // 11. Real-Time Direct Messaging
     if (req.method === "GET" && path === "/api/messages/threads") {
       const usersRes = await env.DB.prepare(
         "SELECT id, username, full_name, avatar_key, verified FROM users WHERE id != ? ORDER BY created DESC"

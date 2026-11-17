@@ -285,7 +285,6 @@ export default function ReelsView({
 
   return (
     <div style={{ position: "relative", maxWidth: 440, margin: "0 auto", background: "#000" }}>
-      {/* AUTO-SCROLL PILL TOGGLE */}
       <button
         type="button"
         onClick={() => setAutoScroll((a) => !a)}

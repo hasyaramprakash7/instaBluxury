@@ -13,3 +13,15 @@ bucket_name = "rk-interior-media"
 binding = "DB"
 database_name = "rk-gram-db"
 database_id = "b85682c4-b174-4657-b77c-49841aeac967"
+
+[[vectorize]]
+binding = "RECOMMENDER_VECTOR"
+index_name = "bluxury-content-embeddings"
+
+[ai]
+binding = "AI"
+
+[durable_objects]
+bindings = [
+  { name = "POST_COORDINATOR", class_name = "PostCoordinator", script_name = "bluxury-do" }
+]

@@ -27,28 +27,6 @@ CREATE TABLE IF NOT EXISTS posts (
   created INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS likes (
-  user_id TEXT NOT NULL,
-  post_id TEXT NOT NULL,
-  created INTEGER NOT NULL,
-  PRIMARY KEY (user_id, post_id)
-);
-
-CREATE TABLE IF NOT EXISTS saves (
-  user_id TEXT NOT NULL,
-  post_id TEXT NOT NULL,
-  created INTEGER NOT NULL,
-  PRIMARY KEY (user_id, post_id)
-);
-
-CREATE TABLE IF NOT EXISTS comments (
-  id TEXT PRIMARY KEY,
-  post_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
-  text TEXT NOT NULL,
-  created INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS follows (
   follower_id TEXT NOT NULL,
   following_id TEXT NOT NULL,
@@ -74,7 +52,6 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_posts_type_created ON posts(type, created DESC);
 CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id, created DESC);
-CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id, created ASC);
 CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender_id, receiver_id, created ASC);
 
 INSERT OR IGNORE INTO users (id, username, full_name, email, password_hash, bio, verified, created) VALUES
