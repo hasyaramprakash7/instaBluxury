@@ -157,7 +157,7 @@ export async function onRequest(context) {
       await env.DB.prepare(
         "INSERT INTO users (id, username, full_name, email, password_hash, bio, verified, created) VALUES (?, ?, ?, ?, ?, ?, 0, ?)"
       )
-        .bind(userId, username, fullName, email, hash, `Hey! I'm ${fullName} on RK Gram.`, now)
+        .bind(userId, username, fullName, email, hash, `Hey! I'm ${fullName} on BLuxury.`, now)
         .run();
 
       const token = uid("tok_") + uid("");
@@ -166,7 +166,7 @@ export async function onRequest(context) {
 
       return json({
         token,
-        user: { id: userId, username, full_name: fullName, email, avatar_url: null, bio: `Hey! I'm ${fullName} on RK Gram.`, verified: 0 },
+        user: { id: userId, username, full_name: fullName, email, avatar_url: null, bio: `Hey! I'm ${fullName} on BLuxury.`, verified: 0 },
       }, 201);
     }
 
@@ -342,6 +342,7 @@ export async function onRequest(context) {
     // ==================== 5. PROTECTED ROUTES (LOGIN REQUIRED) ====================
     if (!me) return json({ error: "Please sign in first" }, 401);
 
+    // Upload Post / Reel / Story to Cloudflare R2
     if (req.method === "POST" && path === "/api/posts") {
       const form = await req.formData();
       const file = form.get("file");
@@ -388,23 +389,64 @@ export async function onRequest(context) {
       }, 201);
     }
 
+    // Hard Delete Post from Cloudflare R2 & D1 SQL
     if (req.method === "DELETE" && path.startsWith("/api/posts/")) {
       const postId = path.split("/").pop();
       const post = await env.DB.prepare("SELECT user_id, media_key FROM posts WHERE id = ?").bind(postId).first();
       if (!post) return json({ error: "Post not found" }, 404);
       if (post.user_id !== me.id) return json({ error: "Forbidden" }, 403);
 
-      await env.BUCKET.delete(post.media_key).catch(() => {});
+      // Delete binary file from Cloudflare R2 bucket
+      if (post.media_key) {
+        await env.BUCKET.delete(post.media_key);
+      }
+
+      // Delete post & related rows from Cloudflare D1 SQL
       await Promise.all([
         env.DB.prepare("DELETE FROM posts WHERE id = ?").bind(postId).run(),
         env.DB.prepare("DELETE FROM likes WHERE post_id = ?").bind(postId).run(),
         env.DB.prepare("DELETE FROM comments WHERE post_id = ?").bind(postId).run(),
         env.DB.prepare("DELETE FROM saves WHERE post_id = ?").bind(postId).run(),
       ]);
+
       await emitEvent(env, "sync", { reason: "post_deleted", post_id: postId });
+      return json({ ok: true, deleted_r2_key: post.media_key });
+    }
+
+    // Hard Delete Entire User Account + All Cloudflare R2 Files + D1 SQL Rows
+    if (req.method === "DELETE" && path === "/api/account") {
+      const userPosts = await env.DB.prepare("SELECT id, media_key FROM posts WHERE user_id = ?").bind(me.id).all();
+      const keysToDelete = userPosts.results.map((p) => p.media_key).filter(Boolean);
+      if (me.avatar_key) keysToDelete.push(me.avatar_key);
+
+      if (keysToDelete.length > 0) {
+        await Promise.all(keysToDelete.map((k) => env.BUCKET.delete(k).catch(() => {})));
+      }
+
+      for (const p of userPosts.results) {
+        await Promise.all([
+          env.DB.prepare("DELETE FROM likes WHERE post_id = ?").bind(p.id).run(),
+          env.DB.prepare("DELETE FROM comments WHERE post_id = ?").bind(p.id).run(),
+          env.DB.prepare("DELETE FROM saves WHERE post_id = ?").bind(p.id).run(),
+        ]);
+      }
+
+      await Promise.all([
+        env.DB.prepare("DELETE FROM posts WHERE user_id = ?").bind(me.id).run(),
+        env.DB.prepare("DELETE FROM likes WHERE user_id = ?").bind(me.id).run(),
+        env.DB.prepare("DELETE FROM comments WHERE user_id = ?").bind(me.id).run(),
+        env.DB.prepare("DELETE FROM saves WHERE user_id = ?").bind(me.id).run(),
+        env.DB.prepare("DELETE FROM follows WHERE follower_id = ? OR following_id = ?").bind(me.id, me.id).run(),
+        env.DB.prepare("DELETE FROM messages WHERE sender_id = ? OR receiver_id = ?").bind(me.id, me.id).run(),
+        env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(me.id).run(),
+        env.DB.prepare("DELETE FROM users WHERE id = ?").bind(me.id).run(),
+      ]);
+
+      await emitEvent(env, "sync", { reason: "user_deleted", user_id: me.id });
       return json({ ok: true });
     }
 
+    // Toggle Like
     if (req.method === "POST" && path.endsWith("/like")) {
       const postId = path.split("/")[3];
       const existing = await env.DB.prepare("SELECT 1 FROM likes WHERE user_id = ? AND post_id = ?").bind(me.id, postId).first();
@@ -420,6 +462,7 @@ export async function onRequest(context) {
       return json({ liked, like_count: cnt.c });
     }
 
+    // Toggle Save
     if (req.method === "POST" && path.endsWith("/save")) {
       const postId = path.split("/")[3];
       const existing = await env.DB.prepare("SELECT 1 FROM saves WHERE user_id = ? AND post_id = ?").bind(me.id, postId).first();
@@ -432,6 +475,7 @@ export async function onRequest(context) {
       }
     }
 
+    // Add Comment
     if (req.method === "POST" && path.endsWith("/comments")) {
       const postId = path.split("/")[3];
       const b = await req.json();
@@ -456,6 +500,7 @@ export async function onRequest(context) {
       return json(commentObj, 201);
     }
 
+    // Toggle Follow
     if (req.method === "POST" && path.endsWith("/follow")) {
       const targetId = path.split("/")[3];
       if (targetId === me.id) return json({ error: "Cannot follow yourself" }, 400);
@@ -475,6 +520,7 @@ export async function onRequest(context) {
       return json({ following });
     }
 
+    // Update Profile (deletes old R2 avatar when replaced)
     if (req.method === "POST" && path === "/api/profile") {
       const form = await req.formData();
       const fullName = String(form.get("full_name") || me.full_name).trim().slice(0, 80);
@@ -484,10 +530,12 @@ export async function onRequest(context) {
       let avatarKey = me.avatar_key;
       if (file && typeof file !== "string" && ALLOWED_TYPES[file.type]) {
         const [ext] = ALLOWED_TYPES[file.type];
-        avatarKey = `avatars/${me.id}_${Date.now()}.${ext}`;
-        await env.BUCKET.put(avatarKey, await file.arrayBuffer(), {
+        const newKey = `avatars/${me.id}_${Date.now()}.${ext}`;
+        await env.BUCKET.put(newKey, await file.arrayBuffer(), {
           httpMetadata: { contentType: file.type, cacheControl: "public, max-age=31536000" },
         });
+        if (avatarKey) await env.BUCKET.delete(avatarKey).catch(() => {});
+        avatarKey = newKey;
       }
 
       await env.DB.prepare("UPDATE users SET full_name = ?, bio = ?, avatar_key = ? WHERE id = ?")

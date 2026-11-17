@@ -52,10 +52,10 @@ export default function AuthModal({ api, onAuth, onClose }) {
         {onClose && (
           <button className="modal-close-btn" onClick={onClose} aria-label="Close">✕</button>
         )}
-        <div className="ig-logo" style={{ fontSize: 32, marginBottom: 6, padding: 0 }}>Bluxury</div>
+        <div className="ig-logo" style={{ fontSize: 32, marginBottom: 6, padding: 0 }}>BLuxury</div>
         <p style={{ color: "#737373", marginBottom: 18, fontSize: 13.5 }}>
           {isSignup
-            ? "Create an account to share posts, reels, stories & chat live."
+            ? "Create a BLuxury account to share posts, reels, stories & chat live."
             : "Log in to like, comment, upload media & message friends."}
         </p>
 
@@ -82,7 +82,7 @@ export default function AuthModal({ api, onAuth, onClose }) {
 
         {/* <div className="divider"><span>INSTANT 1-CLICK DEMO LOGIN</span></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          <button type="button" className="btn-demo" disabled={busy} onClick={() => quickDemoLogin("rk_interiors")}>@rk_interiors</button>
+          <button type="button" className="btn-demo" disabled={busy} onClick={() => quickDemoLogin("bluxury.official")}>@bluxury.official</button>
           <button type="button" className="btn-demo" disabled={busy} onClick={() => quickDemoLogin("arjun.creates")}>@arjun.creates</button>
           <button type="button" className="btn-demo" disabled={busy} onClick={() => quickDemoLogin("ananya.travels")}>@ananya.travels</button>
         </div> */}

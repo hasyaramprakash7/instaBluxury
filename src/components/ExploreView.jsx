@@ -15,7 +15,7 @@ export default function ExploreView({ posts, users, requireAuth, onOpenProfile, 
   const currentSelected = selected ? posts.find((p) => p.id === selected.id) || selected : null;
 
   return (
-    <div style={{ maxWidth: 940, margin: "0 auto", padding: "20px 16px" }}>
+    <div style={{ maxWidth: 940, margin: "0 auto", padding: "16px" }}>
       <div className="search-box">
         <IconSearch />
         <input

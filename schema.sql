@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   avatar_key TEXT,
-  bio TEXT DEFAULT 'Welcome to my RK Gram profile!',
+  bio TEXT DEFAULT 'Welcome to my BLuxury profile!',
   verified INTEGER DEFAULT 0,
   created INTEGER NOT NULL
 );
@@ -78,6 +78,6 @@ CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id, created ASC);
 CREATE INDEX IF NOT EXISTS idx_messages_pair ON messages(sender_id, receiver_id, created ASC);
 
 INSERT OR IGNORE INTO users (id, username, full_name, email, password_hash, bio, verified, created) VALUES
-  ('u_rkstudio', 'rk_interiors', 'RK Design Studio', 'rk@rkgram.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'Luxury Architecture & Modern Living Spaces | Hyderabad & Bangalore', 1, 1735689600000),
-  ('u_arjun', 'arjun.creates', 'Arjun Verma', 'arjun@rkgram.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'Filmmaker & Visual Storyteller | Shot on 35mm', 1, 1735689700000),
-  ('u_ananya', 'ananya.travels', 'Ananya Rao', 'ananya@rkgram.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'Chasing sunsets, coffee & coastal roads', 0, 1735689800000);
+  ('u_bluxury', 'bluxury.official', 'BLuxury Studio', 'hello@bluxury.in', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'Luxury Architecture, Lifestyle & Curated Spaces | Hyderabad & Bangalore', 1, 1735689600000),
+  ('u_arjun', 'arjun.creates', 'Arjun Verma', 'arjun@bluxury.in', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'Filmmaker & Visual Storyteller | Shot on 35mm', 1, 1735689700000),
+  ('u_ananya', 'ananya.travels', 'Ananya Rao', 'ananya@bluxury.in', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 'Chasing sunsets, coffee & coastal roads', 0, 1735689800000);

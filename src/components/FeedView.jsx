@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { IconHeart, IconComment, IconShare, IconBookmark, IconTrash, IconReels } from "./Icons";
+import React, { useState, useEffect, useRef } from "react";
+import { IconHeart, IconComment, IconShare, IconBookmark, IconTrash, IconReels, IconVolume } from "./Icons";
 
 export const Avatar = ({ url, name = "U", size = 36, ring = false, onClick }) => (
   <div
@@ -25,6 +25,47 @@ export const timeAgo = (ts) => {
   return `${Math.floor(s / 86400)}d`;
 };
 
+function FeedVideoPlayer({ src, isActive, muted, onToggleMute }) {
+  const vRef = useRef(null);
+
+  useEffect(() => {
+    const v = vRef.current;
+    if (!v) return;
+    if (isActive) {
+      v.muted = muted;
+      v.play().catch(() => {
+        v.muted = true;
+        v.play().catch(() => {});
+      });
+    } else {
+      v.pause();
+    }
+  }, [isActive, muted]);
+
+  return (
+    <div style={{ position: "relative", width: "100%", display: "grid", placeItems: "center" }}>
+      <video
+        ref={vRef}
+        src={src}
+        playsInline
+        loop
+        muted={muted}
+        className="media-el"
+        onClick={onToggleMute}
+      />
+      <button
+        type="button"
+        className="mute-btn"
+        style={{ top: 10, right: 10, width: 32, height: 32 }}
+        onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
+        aria-label="Toggle video sound"
+      >
+        <IconVolume muted={muted} />
+      </button>
+    </div>
+  );
+}
+
 export default function FeedView({
   me,
   posts,
@@ -44,6 +85,29 @@ export default function FeedView({
   const [commentInputs, setCommentInputs] = useState({});
   const [activeStory, setActiveStory] = useState(null);
   const [heartAnim, setHeartAnim] = useState(null);
+  const [activeVideoPostId, setActiveVideoPostId] = useState(null);
+  const [feedMuted, setFeedMuted] = useState(true);
+  const postRefs = useRef({});
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            const id = entry.target.getAttribute("data-post-id");
+            if (id) setActiveVideoPostId(id);
+          }
+        }
+      },
+      { threshold: [0.6] }
+    );
+
+    Object.values(postRefs.current).forEach((el) => {
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [posts]);
 
   const handleDoubleTap = (post) => {
     requireAuth(() => {
@@ -86,12 +150,17 @@ export default function FeedView({
         {/* POSTS & REELS STREAM */}
         {posts.length === 0 ? (
           <div className="empty-box">
-            <h3>Welcome to Bluxury</h3>
+            <h3>Welcome to BLuxury</h3>
             <p style={{ color: "#737373" }}>No posts yet. Click <b>Create</b> to share the first photo or reel!</p>
           </div>
         ) : (
           posts.map((p) => (
-            <article className="post-card" key={p.id}>
+            <article
+              className="post-card"
+              key={p.id}
+              data-post-id={p.id}
+              ref={(el) => { postRefs.current[p.id] = el; }}
+            >
               <header className="post-hd">
                 <div className="post-user" onClick={() => onOpenProfile(p.user_id)}>
                   <Avatar url={p.avatar_url} name={p.username} size={36} ring />
@@ -113,7 +182,7 @@ export default function FeedView({
                     </button>
                   )}
                   {me && p.user_id === me.id && (
-                    <button className="btn-del" title="Delete post" onClick={() => onDeletePost(p.id)}>
+                    <button className="btn-del" title="Delete permanently from Cloudflare R2 & SQL" onClick={() => onDeletePost(p.id)}>
                       <IconTrash />
                     </button>
                   )}
@@ -122,7 +191,12 @@ export default function FeedView({
 
               <div className="post-media" onDoubleClick={() => handleDoubleTap(p)}>
                 {p.media_type === "video" ? (
-                  <video src={p.media_url} controls playsInline loop muted className="media-el" />
+                  <FeedVideoPlayer
+                    src={p.media_url}
+                    isActive={activeVideoPostId === p.id}
+                    muted={feedMuted}
+                    onToggleMute={() => setFeedMuted((m) => !m)}
+                  />
                 ) : (
                   <img src={p.media_url} alt={p.caption} className="media-el" loading="lazy" />
                 )}
@@ -201,7 +275,7 @@ export default function FeedView({
           </div>
         ) : (
           <div className="guest-card">
-            <b>Welcome to Bluxury</b>
+            <b>Welcome to BLuxury</b>
             <p style={{ color: "#737373", fontSize: 13, margin: "6px 0 12px" }}>
               Sign in to post photos, reels, like, comment, and chat in real time.
             </p>

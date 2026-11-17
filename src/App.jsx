@@ -6,7 +6,7 @@ import ExploreView from "./components/ExploreView";
 import CreateModal from "./components/CreateModal";
 import ChatView from "./components/ChatView";
 import ProfileView from "./components/ProfileView";
-import { IconHome, IconExplore, IconReels, IconChat, IconCreate, IconLogout } from "./components/Icons";
+import { IconHome, IconExplore, IconReels, IconChat, IconCreate, IconLogout, IconBack } from "./components/Icons";
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
 const API = (ENV.VITE_API_URL || "").replace(/\/$/, "");
@@ -94,7 +94,7 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
 .reels-container{max-width:410px;margin:16px auto;display:flex;flex-direction:column;gap:22px;padding:0 10px}
 .reel-card{position:relative;height:80dvh;min-height:500px;background:#000;border-radius:12px;overflow:hidden;color:#fff}
 .reel-media{width:100%;height:100%;object-fit:cover;cursor:pointer}
-.mute-btn{position:absolute;top:14px;right:14px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:50%;width:36px;height:36px;cursor:pointer;display:grid;place-items:center}
+.mute-btn{position:absolute;top:14px;right:14px;background:rgba(0,0,0,.55);color:#fff;border:0;border-radius:50%;width:36px;height:36px;cursor:pointer;display:grid;place-items:center;z-index:5}
 .reel-info{position:absolute;left:14px;bottom:18px;right:64px;text-shadow:0 1px 4px rgba(0,0,0,.8)}
 .reel-follow{background:transparent;border:1px solid #fff;color:#fff;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer}
 .reel-cap{margin:0 0 4px;font-size:13.5px}
@@ -145,7 +145,7 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
 .chat-box{display:flex;flex-direction:column;height:100%;min-height:0}
 .chat-empty{margin:auto;text-align:center;padding:20px}
 .chat-hd{padding:12px 16px;border-bottom:1px solid #dbdbdb;display:flex;align-items:center;gap:12px}
-.chat-back-btn{display:none;background:none;border:0;font-size:22px;cursor:pointer;padding:0 4px;color:#000}
+.chat-back-btn{display:none;background:none;border:0;cursor:pointer;padding:2px;color:#000}
 .chat-stream{flex:1;padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
 .bubble{max-width:75%;background:#efefef;padding:10px 14px;border-radius:18px;font-size:14px;align-self:flex-start;word-break:break-word}
 .bubble.me{background:#0095f6;color:#fff;align-self:flex-end}
@@ -190,7 +190,7 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
   .chat-shell{grid-template-columns:1fr;height:calc(100dvh - 100px);margin:0;border:0;border-radius:0;width:100%}
   .chat-shell:not(.in-chat) .chat-box{display:none}
   .chat-shell.in-chat .chat-list{display:none}
-  .chat-back-btn{display:inline-block}
+  .chat-back-btn{display:grid;place-items:center}
 
   /* Mobile profile & modals */
   .prof-hd{flex-direction:column;text-align:center;gap:14px;padding-bottom:18px}
@@ -201,22 +201,74 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
 `;
 
 export default function App() {
-  const [token, setToken] = useState(() => localStorage.getItem("rkgram_tok") || "");
+  const [token, setToken] = useState(() => localStorage.getItem("bluxury_tok") || "");
   const [me, setMe] = useState(null);
   const [authOpen, setAuthOpen] = useState(false);
   const pendingActionRef = useRef(null);
 
-  const [tab, setTab] = useState("home");
-  const [profileId, setProfileId] = useState(null);
-  const [chatPartnerId, setChatPartnerId] = useState(null);
-  const [createType, setCreateType] = useState(null);
+  // Navigation state synchronized with Browser History Stack (Back / Forward buttons)
+  const [nav, setNav] = useState(() => {
+    const s = window.history.state;
+    return s && s.tab ? s : { tab: "home", profileId: null, chatPartnerId: null };
+  });
+  const [canGoBack, setCanGoBack] = useState(false);
+  const depthRef = useRef(0);
 
+  const [createType, setCreateType] = useState(null);
   const [posts, setPosts] = useState([]);
   const [reels, setReels] = useState([]);
   const [stories, setStories] = useState([]);
   const [users, setUsers] = useState([]);
   const [syncTick, setSyncTick] = useState(0);
   const [liveMessage, setLiveMessage] = useState(null);
+
+  const navigate = useCallback((next) => {
+    setNav((prev) => {
+      const merged = {
+        tab: next.tab ?? prev.tab,
+        profileId: next.profileId !== undefined ? next.profileId : prev.profileId,
+        chatPartnerId: next.chatPartnerId !== undefined ? next.chatPartnerId : prev.chatPartnerId,
+      };
+      if (
+        merged.tab === prev.tab &&
+        merged.profileId === prev.profileId &&
+        merged.chatPartnerId === prev.chatPartnerId
+      ) {
+        return prev;
+      }
+      window.history.pushState(merged, "", `#${merged.tab}`);
+      depthRef.current += 1;
+      setCanGoBack(depthRef.current > 0);
+      window.scrollTo({ top: 0 });
+      return merged;
+    });
+  }, []);
+
+  const goBack = useCallback(() => {
+    if (depthRef.current > 0) {
+      window.history.back();
+    } else {
+      setNav({ tab: "home", profileId: null, chatPartnerId: null });
+      setCanGoBack(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!window.history.state) {
+      window.history.replaceState({ tab: "home", profileId: null, chatPartnerId: null }, "", "#home");
+    }
+    const onPopState = (e) => {
+      depthRef.current = Math.max(0, depthRef.current - 1);
+      setCanGoBack(depthRef.current > 0);
+      if (e.state && e.state.tab) {
+        setNav(e.state);
+      } else {
+        setNav({ tab: "home", profileId: null, chatPartnerId: null });
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -250,7 +302,7 @@ export default function App() {
       if (meRes.ok) {
         setMe(await meRes.json());
       } else {
-        localStorage.removeItem("rkgram_tok");
+        localStorage.removeItem("bluxury_tok");
         setToken("");
         setMe(null);
       }
@@ -264,7 +316,7 @@ export default function App() {
   useEffect(() => {
     let bc = null;
     try {
-      bc = new BroadcastChannel("rkgram_live");
+      bc = new BroadcastChannel("bluxury_live");
       bc.onmessage = (ev) => {
         if (ev.data?.type === "sync") {
           loadAll();
@@ -319,14 +371,14 @@ export default function App() {
 
   const broadcastLocal = (type, payload = {}) => {
     try {
-      const bc = new BroadcastChannel("rkgram_live");
+      const bc = new BroadcastChannel("bluxury_live");
       bc.postMessage({ type, payload });
       bc.close();
     } catch {}
   };
 
   const handleAuth = (tok, user) => {
-    localStorage.setItem("rkgram_tok", tok);
+    localStorage.setItem("bluxury_tok", tok);
     setToken(tok);
     setMe(user);
     setAuthOpen(false);
@@ -339,10 +391,10 @@ export default function App() {
 
   const logout = async () => {
     await fetch(`${API}/api/auth/logout`, { method: "POST", headers: authHeaders }).catch(() => {});
-    localStorage.removeItem("rkgram_tok");
+    localStorage.removeItem("bluxury_tok");
     setToken("");
     setMe(null);
-    setTab("home");
+    navigate({ tab: "home", profileId: null, chatPartnerId: null });
   };
 
   const toggleLike = async (postId) => {
@@ -396,25 +448,54 @@ export default function App() {
   };
 
   const deletePost = async (postId) => {
-    if (!confirm("Delete this post?")) return;
-    await fetch(`${API}/api/posts/${postId}`, { method: "DELETE", headers: authHeaders });
-    setPosts((p) => p.filter((x) => x.id !== postId));
-    setReels((r) => r.filter((x) => x.id !== postId));
-    broadcastLocal("sync");
+    if (!confirm("Permanently delete this post from Cloudflare R2 & SQL?")) return;
+    const res = await fetch(`${API}/api/posts/${postId}`, { method: "DELETE", headers: authHeaders });
+    if (res.ok) {
+      setPosts((p) => p.filter((x) => x.id !== postId));
+      setReels((r) => r.filter((x) => x.id !== postId));
+      setStories((s) => s.filter((x) => x.id !== postId));
+      setSyncTick((t) => t + 1);
+      broadcastLocal("sync");
+    }
   };
+
+  const deleteAccount = async () => {
+    if (!confirm("Are you sure? This will permanently delete your BLuxury account and all your photos/videos from Cloudflare R2 & SQL.")) return;
+    const res = await fetch(`${API}/api/account`, { method: "DELETE", headers: authHeaders });
+    if (res.ok) {
+      localStorage.removeItem("bluxury_tok");
+      setToken("");
+      setMe(null);
+      setNav({ tab: "home", profileId: null, chatPartnerId: null });
+      loadAll();
+      broadcastLocal("sync");
+    }
+  };
+
+  const { tab, profileId, chatPartnerId } = nav;
 
   return (
     <div className="app-shell">
       <style>{CSS}</style>
 
-      {/* NATIVE MOBILE TOP HEADER */}
+      {/* NATIVE MOBILE TOP HEADER WITH HISTORY BACK BUTTON */}
       <header className="mobile-top">
-        <div className="ig-logo" style={{ padding: 0, fontSize: 22 }} onClick={() => setTab("home")}>Bluxury</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {(canGoBack || tab !== "home") && (
+            <button className="mob-icon-btn" onClick={goBack} aria-label="Go back">
+              <IconBack />
+            </button>
+          )}
+          <div className="ig-logo" style={{ padding: 0, fontSize: 22 }} onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })}>
+            BLuxury
+          </div>
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
             className="mob-icon-btn"
             aria-label="Direct Messages"
-            onClick={() => requireAuth(() => { setChatPartnerId(null); setTab("chat"); })}
+            onClick={() => requireAuth(() => navigate({ tab: "chat", chatPartnerId: null }))}
           >
             <IconChat active={tab === "chat"} />
           </button>
@@ -436,26 +517,28 @@ export default function App() {
 
       {/* DESKTOP SIDEBAR / MOBILE BOTTOM TAB BAR */}
       <aside className="sidebar">
-        <div className="ig-logo" onClick={() => setTab("home")}>Bluxury</div>
+        <div className="ig-logo" onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })}>
+          BLuxury
+        </div>
 
-        <button className={"nav-btn" + (tab === "home" ? " on" : "")} onClick={() => setTab("home")} aria-label="Home">
+        <button className={"nav-btn" + (tab === "home" ? " on" : "")} onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })} aria-label="Home">
           <span className="nav-ic"><IconHome active={tab === "home"} /></span>
           <span className="nav-lbl">Home</span>
         </button>
 
-        <button className={"nav-btn" + (tab === "explore" ? " on" : "")} onClick={() => setTab("explore")} aria-label="Explore">
+        <button className={"nav-btn" + (tab === "explore" ? " on" : "")} onClick={() => navigate({ tab: "explore" })} aria-label="Explore">
           <span className="nav-ic"><IconExplore active={tab === "explore"} /></span>
           <span className="nav-lbl">Explore</span>
         </button>
 
-        <button className={"nav-btn" + (tab === "reels" ? " on" : "")} onClick={() => setTab("reels")} aria-label="Reels">
+        <button className={"nav-btn" + (tab === "reels" ? " on" : "")} onClick={() => navigate({ tab: "reels" })} aria-label="Reels">
           <span className="nav-ic"><IconReels active={tab === "reels"} /></span>
           <span className="nav-lbl">Reels</span>
         </button>
 
         <button
           className={"nav-btn nav-chat-desktop" + (tab === "chat" ? " on" : "")}
-          onClick={() => requireAuth(() => { setChatPartnerId(null); setTab("chat"); })}
+          onClick={() => requireAuth(() => navigate({ tab: "chat", chatPartnerId: null }))}
           aria-label="Messages"
         >
           <span className="nav-ic"><IconChat active={tab === "chat"} /></span>
@@ -470,10 +553,7 @@ export default function App() {
         <button
           className={"nav-btn" + (tab === "profile" ? " on" : "")}
           onClick={() =>
-            requireAuth(() => {
-              setProfileId(me.id);
-              setTab("profile");
-            })
+            requireAuth(() => navigate({ tab: "profile", profileId: me.id }))
           }
           aria-label="Profile"
         >
@@ -509,8 +589,8 @@ export default function App() {
             onSave={toggleSave}
             onComment={addComment}
             onFollow={toggleFollow}
-            onOpenProfile={(uid) => { setProfileId(uid); setTab("profile"); }}
-            onOpenChat={(uid) => { setChatPartnerId(uid); setTab("chat"); }}
+            onOpenProfile={(uid) => navigate({ tab: "profile", profileId: uid })}
+            onOpenChat={(uid) => navigate({ tab: "chat", chatPartnerId: uid })}
             onOpenCreateStory={() => setCreateType("story")}
             onDeletePost={deletePost}
             onOpenAuth={() => setAuthOpen(true)}
@@ -526,7 +606,7 @@ export default function App() {
             onSave={toggleSave}
             onComment={addComment}
             onFollow={toggleFollow}
-            onOpenProfile={(uid) => { setProfileId(uid); setTab("profile"); }}
+            onOpenProfile={(uid) => navigate({ tab: "profile", profileId: uid })}
             onOpenCreateReel={() => setCreateType("reel")}
           />
         )}
@@ -536,13 +616,21 @@ export default function App() {
             posts={posts}
             users={users}
             requireAuth={requireAuth}
-            onOpenProfile={(uid) => { setProfileId(uid); setTab("profile"); }}
+            onOpenProfile={(uid) => navigate({ tab: "profile", profileId: uid })}
             onLike={toggleLike}
           />
         )}
 
         {tab === "chat" && me && (
-          <ChatView api={API} token={token} me={me} initialPartnerId={chatPartnerId} liveMessage={liveMessage} />
+          <ChatView
+            api={API}
+            token={token}
+            me={me}
+            activePartnerId={chatPartnerId}
+            onSelectPartner={(uid) => navigate({ tab: "chat", chatPartnerId: uid })}
+            onBackFromChat={goBack}
+            liveMessage={liveMessage}
+          />
         )}
 
         {tab === "profile" && (
@@ -554,8 +642,10 @@ export default function App() {
             refreshTrigger={syncTick}
             requireAuth={requireAuth}
             onLike={toggleLike}
+            onDeletePost={deletePost}
+            onDeleteAccount={deleteAccount}
             onFollow={toggleFollow}
-            onOpenChat={(uid) => { setChatPartnerId(uid); setTab("chat"); }}
+            onOpenChat={(uid) => navigate({ tab: "chat", chatPartnerId: uid })}
             onMeUpdated={setMe}
           />
         )}

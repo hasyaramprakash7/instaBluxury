@@ -1,16 +1,34 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Avatar, timeAgo } from "./FeedView";
-import { IconShare } from "./Icons";
+import { IconShare, IconBack } from "./Icons";
 
-export default function ChatView({ api, token, me, initialPartnerId = null, liveMessage = null }) {
+export default function ChatView({
+  api,
+  token,
+  me,
+  activePartnerId,
+  onSelectPartner,
+  onBackFromChat,
+  liveMessage = null,
+}) {
   const [threads, setThreads] = useState([]);
-  const [activePartner, setActivePartner] = useState(null);
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const endRef = useRef(null);
 
+  const activePartner = threads.find((t) => t.id === activePartnerId) || null;
+
   const loadThreads = async () => {
-    const res = await fetch(`${api}/api/messages/threads`, { headers: { Authorization: `Bearer ${token}` } }); if (res.ok) { const data = await res.json(); setThreads(data.threads); if (initialPartnerId && !activePartner) { const found = data.threads.find((t) => t.id === initialPartnerId); if (found) setActivePartner(found); } } };  const loadMessages = async (partnerId) => { if (!partnerId) return; const res = await fetch(`${api}/api/messages/${partnerId}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(`${api}/api/messages/threads`, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) {
+      const data = await res.json();
+      setThreads(data.threads);
+    }
+  };
+
+  const loadMessages = async (partnerId) => {
+    if (!partnerId) return;
+    const res = await fetch(`${api}/api/messages/${partnerId}`, { headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) {
       const data = await res.json();
       setMessages(data.messages);
@@ -22,18 +40,19 @@ export default function ChatView({ api, token, me, initialPartnerId = null, live
   }, []);
 
   useEffect(() => {
-    if (activePartner) loadMessages(activePartner.id);
-  }, [activePartner?.id]);
+    if (activePartnerId) loadMessages(activePartnerId);
+    else setMessages([]);
+  }, [activePartnerId]);
 
   useEffect(() => {
     if (!liveMessage) return;
     loadThreads();
     if (
-      activePartner &&
-      ((liveMessage.sender_id === activePartner.id && liveMessage.receiver_id === me.id) ||
-        (liveMessage.sender_id === me.id && liveMessage.receiver_id === activePartner.id))
+      activePartnerId &&
+      ((liveMessage.sender_id === activePartnerId && liveMessage.receiver_id === me.id) ||
+        (liveMessage.sender_id === me.id && liveMessage.receiver_id === activePartnerId))
     ) {
-      loadMessages(activePartner.id);
+      loadMessages(activePartnerId);
     }
   }, [liveMessage]);
 
@@ -43,13 +62,40 @@ export default function ChatView({ api, token, me, initialPartnerId = null, live
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!text.trim() || !activePartner) return;
+    if (!text.trim() || !activePartnerId) return;
     const body = text.trim();
     setText("");
     setMessages((prev) => [...prev, { id: "tmp_" + Date.now(), sender_id: me.id, text: body, created: Date.now() }]);
-    await fetch(`${api}/api/messages/${activePartner.id}`, {
+    await fetch(`${api}/api/messages/${activePartnerId}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ text: body }), }); loadMessages(activePartner.id); loadThreads(); };  return ( <div className={"chat-shell" + (activePartner ? " in-chat" : "")}> <div className="chat-list"> <div className="chat-list-hd"> <b>{me.username}</b> <span style={{ fontSize: 12, color: "#0095f6", fontWeight: 600 }}>● Direct</span> </div> {threads.map((t) => ( <div key={t.id} className={"thread-item" + (activePartner?.id === t.id ? " on" : "")} onClick={() => setActivePartner(t)} > <Avatar url={t.avatar_url} name={t.username} size={46} /> <div style={{ flex: 1, minWidth: 0 }}> <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}> <b>{t.full_name}</b> {t.unread > 0 && <span className="unread-dot">{t.unread}</span>} </div> <div className="last-msg"> {t.last_message ? `${t.last_message.text} · ${timeAgo(t.last_message.created)}` : `@${t.username}`}
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ text: body }),
+    });
+    loadMessages(activePartnerId);
+    loadThreads();
+  };
+
+  return (
+    <div className={"chat-shell" + (activePartnerId ? " in-chat" : "")}>
+      <div className="chat-list">
+        <div className="chat-list-hd">
+          <b>{me.username}</b>
+          <span style={{ fontSize: 12, color: "#0095f6", fontWeight: 600 }}>● Direct</span>
+        </div>
+        {threads.map((t) => (
+          <div
+            key={t.id}
+            className={"thread-item" + (activePartnerId === t.id ? " on" : "")}
+            onClick={() => onSelectPartner(t.id)}
+          >
+            <Avatar url={t.avatar_url} name={t.username} size={46} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <b>{t.full_name}</b>
+                {t.unread > 0 && <span className="unread-dot">{t.unread}</span>}
+              </div>
+              <div className="last-msg">
+                {t.last_message ? `${t.last_message.text} · ${timeAgo(t.last_message.created)}` : `@${t.username}`}
               </div>
             </div>
           </div>
@@ -69,10 +115,10 @@ export default function ChatView({ api, token, me, initialPartnerId = null, live
               <button
                 type="button"
                 className="chat-back-btn"
-                onClick={() => setActivePartner(null)}
+                onClick={onBackFromChat}
                 aria-label="Back to inbox"
               >
-                ←
+                <IconBack />
               </button>
               <Avatar url={activePartner.avatar_url} name={activePartner.username} size={36} />
               <div>
