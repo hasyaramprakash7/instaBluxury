@@ -35,6 +35,156 @@ export function parseCaptionLink(raw = "") {
   };
 }
 
+export function formatVideoTime(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return "0:00";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
+export function VideoScrubber({ videoRef }) {
+  const barRef = useRef(null);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const onTime = () => {
+      if (!dragging && v.duration) {
+        setProgress((v.currentTime / v.duration) * 100);
+        setDuration(v.duration);
+      }
+    };
+    const onMeta = () => {
+      if (v.duration) setDuration(v.duration);
+    };
+
+    v.addEventListener("timeupdate", onTime);
+    v.addEventListener("loadedmetadata", onMeta);
+    return () => {
+      v.removeEventListener("timeupdate", onTime);
+      v.removeEventListener("loadedmetadata", onMeta);
+    };
+  }, [videoRef, dragging]);
+
+  const seekToClientX = (clientX) => {
+    const bar = barRef.current;
+    const v = videoRef.current;
+    if (!bar || !v || !v.duration) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    v.currentTime = ratio * v.duration;
+    setProgress(ratio * 100);
+  };
+
+  const handlePointerDown = (e) => {
+    e.stopPropagation();
+    setDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    seekToClientX(e.clientX);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!dragging) return;
+    e.stopPropagation();
+    seekToClientX(e.clientX);
+  };
+
+  const handlePointerUp = (e) => {
+    if (!dragging) return;
+    e.stopPropagation();
+    setDragging(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  const currentSec = duration ? (progress / 100) * duration : 0;
+
+  return (
+    <div
+      ref={barRef}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: 24,
+        display: "flex",
+        alignItems: "flex-end",
+        cursor: "pointer",
+        zIndex: 12,
+        touchAction: "none",
+      }}
+      aria-label="Video timeline scrubber"
+    >
+      {dragging && duration > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 26,
+            left: `clamp(36px, ${progress}%, calc(100% - 36px))`,
+            transform: "translateX(-50%)",
+            background: "rgba(0,0,0,0.82)",
+            color: "#fff",
+            fontSize: 11.5,
+            fontWeight: 600,
+            padding: "3px 8px",
+            borderRadius: 6,
+            whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}
+        >
+          {formatVideoTime(currentSec)} / {formatVideoTime(duration)}
+        </div>
+      )}
+
+      <div
+        style={{
+          width: "100%",
+          height: dragging ? 6 : 3,
+          background: "rgba(255,255,255,0.32)",
+          position: "relative",
+          transition: "height 0.12s ease",
+        }}
+      >
+        <div
+          style={{
+            width: `${progress}%`,
+            height: "100%",
+            background: "#fff",
+            position: "relative",
+          }}
+        >
+          <span
+            style={{
+              position: "absolute",
+              right: -6,
+              top: "50%",
+              transform: `translateY(-50%) scale(${dragging ? 1.25 : 0.9})`,
+              width: 12,
+              height: 12,
+              borderRadius: "50%",
+              background: "#fff",
+              boxShadow: "0 1px 4px rgba(0,0,0,0.6)",
+              transition: "transform 0.12s ease",
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FeedVideoPlayer({ src, isActive, muted, onToggleMute }) {
   const vRef = useRef(null);
 
@@ -72,6 +222,7 @@ function FeedVideoPlayer({ src, isActive, muted, onToggleMute }) {
       >
         <IconVolume muted={muted} />
       </button>
+      <VideoScrubber videoRef={vRef} />
     </div>
   );
 }
@@ -218,7 +369,7 @@ export default function FeedView({
                     <div className="big-heart"><IconHeart filled size={84} /></div>
                   )}
                   {p.type === "reel" && (
-                    <span className="reel-pill" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span className="reel-pill" style={{ bottom: 16, display: "flex", alignItems: "center", gap: 4 }}>
                       <IconReels /> Reel
                     </span>
                   )}

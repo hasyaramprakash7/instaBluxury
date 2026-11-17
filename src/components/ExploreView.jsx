@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Avatar } from "./FeedView";
+import { Avatar, parseCaptionLink } from "./FeedView";
 import { IconSearch, IconHeart, IconComment, IconReels } from "./Icons";
 
 export default function ExploreView({ posts, users, requireAuth, onOpenProfile, onLike }) {
@@ -13,6 +13,7 @@ export default function ExploreView({ posts, users, requireAuth, onOpenProfile, 
     : posts;
 
   const currentSelected = selected ? posts.find((p) => p.id === selected.id) || selected : null;
+  const selectedParsed = currentSelected ? parseCaptionLink(currentSelected.caption) : null;
 
   return (
     <div style={{ maxWidth: 940, margin: "0 auto", padding: "16px" }}>
@@ -75,8 +76,38 @@ export default function ExploreView({ posts, users, requireAuth, onOpenProfile, 
                 </div>
                 <button style={{ border: 0, background: "none", fontSize: 18, cursor: "pointer" }} onClick={() => setSelected(null)}>✕</button>
               </div>
+
+              {selectedParsed?.link && (
+                <a
+                  href={selectedParsed.link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 12px",
+                    marginTop: 10,
+                    borderRadius: 8,
+                    background: "#f0f8ff",
+                    border: "1px solid #b3dcff",
+                    color: "#0077cc",
+                    textDecoration: "none",
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    🔗 {selectedParsed.link.label}
+                  </span>
+                  <span style={{ flex: "none", marginLeft: 8 }}>↗</span>
+                </a>
+              )}
+
               <div style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
-                <p><b>{currentSelected.username}</b> {currentSelected.caption}</p>
+                {selectedParsed?.text && (
+                  <p><b>{currentSelected.username}</b> {selectedParsed.text}</p>
+                )}
                 {currentSelected.comments.map((c) => (
                   <p key={c.id} style={{ fontSize: 13 }}><b>{c.username}</b> {c.text}</p>
                 ))}

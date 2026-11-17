@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Avatar } from "./FeedView";
+import { Avatar, parseCaptionLink, VideoScrubber } from "./FeedView";
 import { IconHeart, IconComment, IconBookmark, IconVolume, IconReels } from "./Icons";
 
 function SingleReelCard({
@@ -19,6 +19,8 @@ function SingleReelCard({
   const videoRef = useRef(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [txt, setTxt] = useState("");
+  const [heartAnim, setHeartAnim] = useState(false);
+  const { text: cleanCaption, link: reelLink } = parseCaptionLink(reel.caption);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -35,8 +37,21 @@ function SingleReelCard({
     }
   }, [isActive, muted]);
 
+  const handleDoubleTap = () => {
+    requireAuth(() => {
+      setHeartAnim(true);
+      setTimeout(() => setHeartAnim(false), 700);
+      if (!reel.liked) onLike(reel.id);
+    });
+  };
+
   return (
-    <div className="reel-card" data-reel-id={reel.id} ref={(el) => registerRef(reel.id, el)}>
+    <div
+      className="reel-card"
+      data-reel-id={reel.id}
+      ref={(el) => registerRef(reel.id, el)}
+      onDoubleClick={handleDoubleTap}
+    >
       {reel.media_type === "video" ? (
         <video
           ref={videoRef}
@@ -52,42 +67,78 @@ function SingleReelCard({
       )}
 
       {reel.media_type === "video" && (
-        <button className="mute-btn" onClick={onToggleMute} aria-label="Toggle sound">
+        <button className="mute-btn" onClick={(e) => { e.stopPropagation(); onToggleMute(); }} aria-label="Toggle sound">
           <IconVolume muted={muted} />
         </button>
       )}
 
+      {heartAnim && (
+        <div className="big-heart" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center" }}>
+          <IconHeart filled size={90} />
+        </div>
+      )}
+
       <div className="reel-info">
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-          <Avatar url={reel.avatar_url} name={reel.username} size={36} onClick={() => onOpenProfile(reel.user_id)} />
+          <Avatar url={reel.avatar_url} name={reel.username} size={36} ring onClick={() => onOpenProfile(reel.user_id)} />
           <b style={{ cursor: "pointer" }} onClick={() => onOpenProfile(reel.user_id)}>{reel.username}</b>
           {(!me || reel.user_id !== me.id) && (
-            <button className="reel-follow" onClick={() => requireAuth(() => onFollow(reel.user_id))}>
+            <button
+              className="reel-follow"
+              onClick={(e) => { e.stopPropagation(); requireAuth(() => onFollow(reel.user_id)); }}
+            >
               {reel.following ? "Following" : "Follow"}
             </button>
           )}
         </div>
-        {reel.caption && <p className="reel-cap">{reel.caption}</p>}
-        {reel.location && <small style={{ opacity: 0.85 }}>{reel.location}</small>}
+        {cleanCaption && <p className="reel-cap">{cleanCaption}</p>}
+        {reel.location && <small style={{ opacity: 0.85, display: "block", marginBottom: 6 }}>{reel.location}</small>}
+        {reelLink && (
+          <a
+            href={reelLink.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              marginTop: 6,
+              background: "rgba(255,255,255,0.94)",
+              color: "#000",
+              padding: "6px 12px",
+              borderRadius: 18,
+              fontSize: 12.5,
+              fontWeight: 600,
+              textDecoration: "none",
+              textShadow: "none",
+            }}
+          >
+            🔗 {reelLink.label} ↗
+          </a>
+        )}
       </div>
 
       <div className="reel-rail">
         <button onClick={() => requireAuth(() => onLike(reel.id))}>
-          <IconHeart filled={reel.liked} size={27} />
+          <IconHeart filled={reel.liked} size={28} />
           <small>{reel.like_count}</small>
         </button>
         <button onClick={() => setDrawerOpen(!drawerOpen)}>
-          <IconComment size={27} />
+          <IconComment size={28} />
           <small>{reel.comment_count}</small>
         </button>
         <button onClick={() => requireAuth(() => onSave(reel.id))}>
-          <IconBookmark filled={reel.saved} size={27} />
+          <IconBookmark filled={reel.saved} size={28} />
           <small>Save</small>
         </button>
       </div>
 
+      {/* DRAGGABLE VIDEO TIMELINE SCRUBBER AT BOTTOM */}
+      {reel.media_type === "video" && <VideoScrubber videoRef={videoRef} />}
+
       {drawerOpen && (
-        <div className="reel-drawer">
+        <div className="reel-drawer" onClick={(e) => e.stopPropagation()}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
             <b>Comments ({reel.comments.length})</b>
             <button style={{ border: 0, background: "none", fontSize: 16, cursor: "pointer" }} onClick={() => setDrawerOpen(false)}>✕</button>
@@ -137,22 +188,24 @@ export default function ReelsView({
   const [activeId, setActiveId] = useState(reels[0]?.id || null);
   const [muted, setMuted] = useState(false);
   const cardRefs = useRef({});
+  const containerRef = useRef(null);
 
   useEffect(() => {
     if (!activeId && reels[0]) setActiveId(reels[0].id);
   }, [reels, activeId]);
 
   useEffect(() => {
+    const rootEl = containerRef.current;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting && entry.intersectionRatio >= 0.65) {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.7) {
             const id = entry.target.getAttribute("data-reel-id");
             if (id) setActiveId(id);
           }
         }
       },
-      { threshold: [0.65] }
+      { root: rootEl, threshold: [0.7] }
     );
 
     Object.values(cardRefs.current).forEach((el) => {
@@ -176,7 +229,7 @@ export default function ReelsView({
   }
 
   return (
-    <div className="reels-container">
+    <div className="reels-container" ref={containerRef}>
       {reels.map((r) => (
         <SingleReelCard
           key={r.id}
