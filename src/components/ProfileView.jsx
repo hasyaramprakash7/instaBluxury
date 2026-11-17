@@ -1,6 +1,29 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Avatar } from "./FeedView";
-import { IconHeart, IconComment, IconReels, IconBookmark, IconGrid } from "./Icons";
+import { IconHeart, IconComment, IconReels, IconBookmark, IconGrid, IconTrash } from "./Icons";
+
+function parseBioAndLinks(rawBio = "") {
+  const lines = String(rawBio || "").split("\n");
+  const bioLines = [];
+  const links = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^(https?:\/\/|www\.)\S+$/i.test(trimmed)) {
+      links.push(trimmed);
+    } else {
+      bioLines.push(line);
+    }
+  }
+  return { cleanBio: bioLines.join("\n").trim(), links };
+}
+
+function serializeBioAndLinks(cleanBio, links) {
+  const validLinks = links
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => (/^https?:\/\//i.test(l) ? l : `https://${l}`));
+  return [cleanBio.trim(), ...validLinks].filter(Boolean).join("\n");
+}
 
 export default function ProfileView({
   api,
@@ -10,6 +33,8 @@ export default function ProfileView({
   refreshTrigger,
   requireAuth,
   onLike,
+  onDeletePost,
+  onDeleteAccount,
   onFollow,
   onOpenChat,
   onMeUpdated,
@@ -17,11 +42,13 @@ export default function ProfileView({
   const [profile, setProfile] = useState(null);
   const [posts, setPosts] = useState([]);
   const [saved, setSaved] = useState([]);
-  const [tab, setTab] = useState("all"); // 'all', 'posts', 'reels', 'saved'
+  const [tab, setTab] = useState("all");
   const [selectedItem, setSelectedItem] = useState(null);
+
   const [editing, setEditing] = useState(false);
-  const [bio, setBio] = useState("");
   const [fullName, setFullName] = useState("");
+  const [bio, setBio] = useState("");
+  const [links, setLinks] = useState([""]);
   const [avatarFile, setAvatarFile] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,8 +64,10 @@ export default function ProfileView({
     if (uRes.ok) {
       const u = await uRes.json();
       setProfile(u);
-      setBio(u.bio || "");
+      const parsed = parseBioAndLinks(u.bio);
       setFullName(u.full_name || "");
+      setBio(parsed.cleanBio);
+      setLinks(parsed.links.length ? parsed.links : [""]);
     }
     if (pRes.ok) {
       const p = await pRes.json();
@@ -55,12 +84,24 @@ export default function ProfileView({
     load();
   }, [load, refreshTrigger]);
 
+  const updateLinkField = (idx, val) => {
+    setLinks((prev) => prev.map((item, i) => (i === idx ? val : item)));
+  };
+
+  const addLinkField = () => {
+    if (links.length < 5) setLinks((prev) => [...prev, ""]);
+  };
+
+  const removeLinkField = (idx) => {
+    setLinks((prev) => (prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx)));
+  };
+
   const saveProfile = async (e) => {
     e.preventDefault();
     setBusy(true);
     const fd = new FormData();
-    fd.append("full_name", fullName);
-    fd.append("bio", bio);
+    fd.append("full_name", fullName.trim() || profile.full_name);
+    fd.append("bio", serializeBioAndLinks(bio, links));
     if (avatarFile) fd.append("avatar", avatarFile);
 
     const res = await fetch(`${api}/api/profile`, {
@@ -72,12 +113,15 @@ export default function ProfileView({
       const updated = await res.json();
       onMeUpdated(updated);
       setEditing(false);
+      setAvatarFile(null);
       load();
     }
     setBusy(false);
   };
 
   if (!profile) return <div style={{ padding: 40, textAlign: "center" }}>Loading profile...</div>;
+
+  const { cleanBio, links: profileLinks } = parseBioAndLinks(profile.bio);
 
   const shown =
     tab === "all"
@@ -88,19 +132,32 @@ export default function ProfileView({
       ? posts.filter((p) => p.type === "reel")
       : saved;
 
-  const activeModalItem = selectedItem ? posts.find((p) => p.id === selectedItem.id) || saved.find((p) => p.id === selectedItem.id) || selectedItem : null;
+  const activeModalItem = selectedItem
+    ? posts.find((p) => p.id === selectedItem.id) || saved.find((p) => p.id === selectedItem.id) || null
+    : null;
 
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", padding: "28px 16px" }}>
+    <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 16px" }}>
       <div className="prof-hd">
-        <Avatar url={profile.avatar_url} name={profile.username} size={110} ring />
+        <Avatar url={profile.avatar_url} name={profile.username} size={96} ring />
         <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
             <h2 style={{ margin: 0, fontWeight: 400 }}>
               {profile.username} {profile.verified ? <span className="badge-v">✓</span> : null}
             </h2>
             {isMe ? (
-              <button className="btn-sec" onClick={() => setEditing(!editing)}>Edit profile</button>
+              <>
+                <button className="btn-sec" onClick={() => setEditing(!editing)}>
+                  {editing ? "Cancel" : "Edit profile"}
+                </button>
+                <button
+                  className="btn-sec"
+                  style={{ color: "#c0392b", background: "#ffebe8" }}
+                  onClick={onDeleteAccount}
+                >
+                  Delete account
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -115,26 +172,86 @@ export default function ProfileView({
             )}
           </div>
 
-          <div style={{ display: "flex", gap: 28, marginBottom: 12, fontSize: 15 }}>
-            <span><b>{posts.length}</b> posts &amp; reels</span>
+          <div style={{ display: "flex", gap: 24, marginBottom: 12, fontSize: 14.5 }}>
+            <span><b>{posts.length}</b> posts</span>
             <span><b>{profile.followers_count}</b> followers</span>
             <span><b>{profile.following_count}</b> following</span>
           </div>
 
-          <b>{profile.full_name}</b>
-          <p style={{ margin: "4px 0 0", whiteSpace: "pre-line", fontSize: 14 }}>{profile.bio}</p>
+          <b style={{ fontSize: 15 }}>{profile.full_name}</b>
+          {cleanBio && <p style={{ margin: "4px 0 6px", whiteSpace: "pre-line", fontSize: 14 }}>{cleanBio}</p>}
+
+          {profileLinks.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
+              {profileLinks.map((href, i) => {
+                const fullHref = /^https?:\/\//i.test(href) ? href : `https://${href}`;
+                const display = href.replace(/^https?:\/\/(www\.)?/i, "");
+                return (
+                  <a
+                    key={i}
+                    href={fullHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#00376b", fontWeight: 600, fontSize: 13.5, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 5 }}
+                  >
+                    🔗 {display}
+                  </a>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
       {editing && (
         <form onSubmit={saveProfile} className="edit-prof-box">
-          <h4 style={{ margin: "0 0 10px" }}>Edit Profile</h4>
-          <input className="c-input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full name" />
-          <textarea className="c-input" rows={2} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Bio" />
-          <div style={{ marginBottom: 10, fontSize: 13 }}>
+          <h4 style={{ margin: "0 0 12px" }}>Edit Profile</h4>
+
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#737373", marginBottom: 4 }}>Name</label>
+          <input className="c-input" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Your display name" />
+
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#737373", marginBottom: 4 }}>Bio</label>
+          <textarea className="c-input" rows={2} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Write about yourself..." />
+
+          <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#737373", marginBottom: 4 }}>
+            Website &amp; Social Links (up to 5)
+          </label>
+          {links.map((lk, idx) => (
+            <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <input
+                className="c-input"
+                style={{ marginBottom: 0, flex: 1 }}
+                value={lk}
+                onChange={(e) => updateLinkField(idx, e.target.value)}
+                placeholder="https://yourwebsite.com or instagram.com/..."
+              />
+              <button
+                type="button"
+                className="btn-sec"
+                onClick={() => removeLinkField(idx)}
+                aria-label="Remove link"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          {links.length < 5 && (
+            <button
+              type="button"
+              className="btn-sec"
+              style={{ marginBottom: 12, fontSize: 12 }}
+              onClick={addLinkField}
+            >
+              + Add another link
+            </button>
+          )}
+
+          <div style={{ marginBottom: 12, fontSize: 13 }}>
             Profile Photo: <input type="file" accept="image/*" onChange={(e) => setAvatarFile(e.target.files[0])} />
           </div>
-          <button className="btn-primary" style={{ width: "auto" }} disabled={busy}>{busy ? "Saving..." : "Save Changes"}</button>
+          <button className="btn-primary" style={{ width: "auto" }} disabled={busy}>
+            {busy ? "Saving..." : "Save Profile"}
+          </button>
         </form>
       )}
 
@@ -189,7 +306,22 @@ export default function ProfileView({
             <div className="exp-m-side">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12, borderBottom: "1px solid #efefef" }}>
                 <b>{profile.username}</b>
-                <button style={{ border: 0, background: "none", fontSize: 18, cursor: "pointer" }} onClick={() => setSelectedItem(null)}>✕</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {isMe && (
+                    <button
+                      className="btn-del"
+                      title="Delete permanently from Cloudflare R2 & SQL"
+                      onClick={async () => {
+                        await onDeletePost(activeModalItem.id);
+                        setSelectedItem(null);
+                        load();
+                      }}
+                    >
+                      <IconTrash />
+                    </button>
+                  )}
+                  <button style={{ border: 0, background: "none", fontSize: 18, cursor: "pointer" }} onClick={() => setSelectedItem(null)}>✕</button>
+                </div>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
                 <p><b>{profile.username}</b> {activeModalItem.caption}</p>
