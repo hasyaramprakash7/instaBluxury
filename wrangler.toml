@@ -1,0 +1,15 @@
+name = "rk-gram"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-01-01"
+
+[vars]
+R2_PUBLIC_URL = "https://pub-945c958197b34f159564b00248bdf14c.r2.dev"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "rk-interior-media"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "rk-gram-db"
+database_id = "b85682c4-b174-4657-b77c-49841aeac967"
