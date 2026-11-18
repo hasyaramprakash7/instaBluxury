@@ -1,5 +1,8 @@
-export class PostCoordinator {
+import { DurableObject } from "cloudflare:workers";
+
+export class PostCoordinatorV2 extends DurableObject {
   constructor(state, env) {
+    super(state, env);
     this.state = state;
     this.env = env;
   }
@@ -137,3 +140,10 @@ export class PostCoordinator {
     return new Response("Not found", { status: 404 });
   }
 }
+
+// Required default export for standalone Worker entrypoints in workerd
+export default {
+  async fetch(request, env) {
+    return new Response("bluxury-do-v2 Durable Object Worker is running", { status: 200 });
+  },
+};

@@ -21,7 +21,7 @@ index_name = "bluxury-content-embeddings"
 [ai]
 binding = "AI"
 
-[durable_objects]
-bindings = [
-  { name = "POST_COORDINATOR", class_name = "PostCoordinator", script_name = "bluxury-do" }
-]
+[[durable_objects.bindings]]
+name = "POST_COORDINATOR"
+class_name = "PostCoordinatorV2"
+script_name = "bluxury-do-v2"

@@ -1,12 +1,12 @@
-name = "bluxury-do"
-main = "do-worker.js"
-compatibility_date = "2026-01-01"
+name = "bluxury-do-v2"
+main = "functions/durable/PostCoordinator.js"
+compatibility_date = "2024-03-20"
 
 [durable_objects]
 bindings = [
-  { name = "POST_COORDINATOR", class_name = "PostCoordinator" }
+  { name = "POST_COORDINATOR", class_name = "PostCoordinatorV2" }
 ]
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["PostCoordinator"]
+new_sqlite_classes = ["PostCoordinatorV2"]

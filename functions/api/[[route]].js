@@ -1,5 +1,5 @@
 
-export { PostCoordinator } from "../durable/PostCoordinator.js";
+export { PostCoordinatorV2 } from "../durable/PostCoordinator.js";
 const json = (data, status = 200, extraHeaders = {}) =>
   new Response(JSON.stringify(data), {
     status,
