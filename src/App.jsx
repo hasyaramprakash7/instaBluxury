@@ -10,6 +10,33 @@ import { IconHome, IconExplore, IconReels, IconChat, IconCreate, IconLogout, Ico
 
 const ENV = (typeof import.meta !== "undefined" && import.meta.env) || {};
 const API = (ENV.VITE_API_URL || "").replace(/\/$/, "");
+const AGENCY_URL = "https://bluxuryteck.pages.dev/";
+
+const VALID_TABS = new Set(["home", "explore", "reels", "chat", "profile"]);
+
+function parseInitialRoute() {
+  if (typeof window === "undefined") {
+    return { tab: "home", profileId: null, chatPartnerId: null };
+  }
+  const s = window.history.state;
+  if (s && VALID_TABS.has(s.tab)) return s;
+
+  const pathSeg = window.location.pathname.replace(/^\/+|\/+$/g, "").split("/")[0];
+  if (VALID_TABS.has(pathSeg)) {
+    return { tab: pathSeg, profileId: null, chatPartnerId: null };
+  }
+
+  const hashSeg = window.location.hash.replace(/^#/, "");
+  if (VALID_TABS.has(hashSeg)) {
+    return { tab: hashSeg, profileId: null, chatPartnerId: null };
+  }
+
+  return { tab: "home", profileId: null, chatPartnerId: null };
+}
+
+function tabToPath(tab) {
+  return tab === "home" ? "/" : `/${tab}`;
+}
 
 const CSS = `
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -17,13 +44,13 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
 .app-shell{display:flex;min-height:100dvh;width:100%}
 .sidebar{width:235px;background:#fff;border-right:1px solid #dbdbdb;padding:24px 14px;display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:30}
 .ig-logo{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:24px;padding:8px 12px 24px;cursor:pointer;letter-spacing:-.5px}
-.nav-btn{display:flex;align-items:center;gap:14px;padding:12px;border-radius:8px;border:0;background:transparent;font-size:15px;cursor:pointer;text-align:left;margin-bottom:4px;color:#000}
+.nav-btn{display:flex;align-items:center;gap:14px;padding:12px;border-radius:8px;border:0;background:transparent;font-size:15px;cursor:pointer;text-align:left;margin-bottom:4px;color:#000;text-decoration:none}
 .nav-btn:hover{background:#f2f2f2}
 .nav-btn.on{font-weight:700}
 .nav-ic{width:26px;height:26px;display:grid;place-items:center;flex:none;position:relative}
 .main-area{margin-left:235px;flex:1;padding-bottom:64px;min-width:0}
 .mobile-top{display:none}
-.mob-icon-btn{background:none;border:0;padding:6px;cursor:pointer;color:#000;display:grid;place-items:center;position:relative}
+.mob-icon-btn{background:none;border:0;padding:6px;cursor:pointer;color:#000;display:grid;place-items:center;position:relative;text-decoration:none}
 
 /* Auth Modal */
 .auth-modal-box{position:relative;background:#fff;border:1px solid #dbdbdb;border-radius:12px;width:100%;max-width:380px;padding:28px 22px;text-align:center}
@@ -90,7 +117,7 @@ html,body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helveti
 .sug-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .btn-link{background:none;border:0;color:#0095f6;font-weight:600;font-size:12px;cursor:pointer}
 
-/* Reels - Strictly One Full-Screen Card Per Screen */
+/* Reels */
 .reels-container{max-width:440px;margin:0 auto;padding:0;gap:0;height:100dvh;overflow-y:scroll;scroll-snap-type:y mandatory;scrollbar-width:none;background:#000}
 .reels-container::-webkit-scrollbar{display:none}
 .reel-card{position:relative;width:100%;height:100dvh;min-height:100dvh;max-height:100dvh;flex:0 0 100dvh;scroll-snap-align:start;scroll-snap-stop:always;background:#000;border-radius:0;overflow:hidden;color:#fff;display:flex;align-items:center;justify-content:center}
@@ -201,10 +228,7 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const pendingActionRef = useRef(null);
 
-  const [nav, setNav] = useState(() => {
-    const s = window.history.state;
-    return s && s.tab ? s : { tab: "home", profileId: null, chatPartnerId: null };
-  });
+  const [nav, setNav] = useState(parseInitialRoute);
   const [canGoBack, setCanGoBack] = useState(false);
   const depthRef = useRef(0);
 
@@ -231,7 +255,7 @@ export default function App() {
       ) {
         return prev;
       }
-      window.history.pushState(merged, "", `#${merged.tab}`);
+      window.history.pushState(merged, "", tabToPath(merged.tab));
       depthRef.current += 1;
       setCanGoBack(depthRef.current > 0);
       window.scrollTo({ top: 0 });
@@ -243,19 +267,21 @@ export default function App() {
     if (depthRef.current > 0) {
       window.history.back();
     } else {
-      setNav({ tab: "home", profileId: null, chatPartnerId: null });
+      const homeState = { tab: "home", profileId: null, chatPartnerId: null };
+      window.history.replaceState(homeState, "", "/");
+      setNav(homeState);
       setCanGoBack(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!window.history.state) {
-      window.history.replaceState({ tab: "home", profileId: null, chatPartnerId: null }, "", "#home");
-    }
+    const initial = parseInitialRoute();
+    window.history.replaceState(initial, "", tabToPath(initial.tab));
+
     const onPopState = (e) => {
       depthRef.current = Math.max(0, depthRef.current - 1);
       setCanGoBack(depthRef.current > 0);
-      if (e.state && e.state.tab) {
+      if (e.state && VALID_TABS.has(e.state.tab)) {
         setNav(e.state);
       } else {
         setNav({ tab: "home", profileId: null, chatPartnerId: null });
@@ -481,12 +507,24 @@ export default function App() {
               <IconBack />
             </button>
           )}
-          <div className="ig-logo" style={{ padding: 0, fontSize: 22 }} onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })}>
+          <div
+            className="ig-logo"
+            style={{ padding: 0, fontSize: 22 }}
+            onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })}
+          >
             BLuxury
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <a
+            href={AGENCY_URL}
+            className="mob-icon-btn"
+            style={{ fontSize: 12, fontWeight: 600, color: "#0B6E3C" }}
+            aria-label="BLuxury Tech Agency"
+          >
+            Agency
+          </a>
           <button
             className="mob-icon-btn"
             aria-label="Direct Messages"
@@ -512,21 +550,36 @@ export default function App() {
 
       {/* DESKTOP SIDEBAR / MOBILE BOTTOM TAB BAR */}
       <aside className="sidebar">
-        <div className="ig-logo" onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })}>
+        <div
+          className="ig-logo"
+          onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })}
+        >
           BLuxury
         </div>
 
-        <button className={"nav-btn" + (tab === "home" ? " on" : "")} onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })} aria-label="Home">
+        <button
+          className={"nav-btn" + (tab === "home" ? " on" : "")}
+          onClick={() => navigate({ tab: "home", profileId: null, chatPartnerId: null })}
+          aria-label="Home"
+        >
           <span className="nav-ic"><IconHome active={tab === "home"} /></span>
           <span className="nav-lbl">Home</span>
         </button>
 
-        <button className={"nav-btn" + (tab === "explore" ? " on" : "")} onClick={() => navigate({ tab: "explore" })} aria-label="Explore">
+        <button
+          className={"nav-btn" + (tab === "explore" ? " on" : "")}
+          onClick={() => navigate({ tab: "explore" })}
+          aria-label="Explore"
+        >
           <span className="nav-ic"><IconExplore active={tab === "explore"} /></span>
           <span className="nav-lbl">Explore</span>
         </button>
 
-        <button className={"nav-btn" + (tab === "reels" ? " on" : "")} onClick={() => navigate({ tab: "reels" })} aria-label="Reels">
+        <button
+          className={"nav-btn" + (tab === "reels" ? " on" : "")}
+          onClick={() => navigate({ tab: "reels" })}
+          aria-label="Reels"
+        >
           <span className="nav-ic"><IconReels active={tab === "reels"} /></span>
           <span className="nav-lbl">Reels</span>
         </button>
@@ -540,7 +593,11 @@ export default function App() {
           <span className="nav-lbl">Messages</span>
         </button>
 
-        <button className="nav-btn" onClick={() => requireAuth(() => setCreateType("post"))} aria-label="Create">
+        <button
+          className="nav-btn"
+          onClick={() => requireAuth(() => setCreateType("post"))}
+          aria-label="Create"
+        >
           <span className="nav-ic"><IconCreate /></span>
           <span className="nav-lbl">Create</span>
         </button>
@@ -559,6 +616,17 @@ export default function App() {
         </button>
 
         <div className="logout-btn" style={{ flex: 1 }} />
+
+        <a
+          href={AGENCY_URL}
+          className="nav-btn logout-btn"
+          style={{ fontSize: 13, color: "#0B6E3C", fontWeight: 600 }}
+          aria-label="Back to BLuxury Tech"
+        >
+          <span className="nav-ic"><IconBack /></span>
+          <span className="nav-lbl">BLuxury Tech</span>
+        </a>
+
         {me ? (
           <button className="nav-btn logout-btn" onClick={logout}>
             <span className="nav-ic"><IconLogout /></span>
